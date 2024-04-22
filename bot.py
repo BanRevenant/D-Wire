@@ -18,6 +18,7 @@ intents.messages = True
 intents.message_content = True
 
 bot = commands.Bot(command_prefix=config['discord']['command_prefix'], intents=intents)
+bot.config = config
 
 async def login_and_get_cookie():
     """Log in to the Factorio server manager and get a session cookie asynchronously."""
