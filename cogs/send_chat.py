@@ -4,7 +4,6 @@ import asyncio
 import json
 import aiohttp
 import websockets
-import re
 
 class SendChatCog(commands.Cog):
     def __init__(self, bot):
@@ -57,18 +56,20 @@ class SendChatCog(commands.Cog):
             return
 
         try:
-            # Escape special characters in the message
-            escaped_message = re.sub(r'([^a-zA-Z0-9\s])', r'\\\1', message.content)
-
             wrapped_message = {
                 "room_name": "",
-                "controls": {"type": "command", "value": f"/cchat {message.author.display_name}: {escaped_message}"}
+                "controls": {"type": "command", "value": f"/cchat {message.author.display_name}: {message.content}"}
             }
-            print(f"Sending message to WebSocket: {json.dumps(wrapped_message)}")
-            await self.websocket.send(json.dumps(wrapped_message))
+            serialized_message = json.dumps(wrapped_message)
+            print(f"Sending message to WebSocket: {serialized_message}")
+            await self.websocket.send(serialized_message)
             print("Message sent to WebSocket successfully.")
         except Exception as e:
             print(f"Error sending message to WebSocket: {str(e)}")
+
+    @commands.command()
+    async def ping(self, ctx):
+        await ctx.send("Pong!")
 
     async def cog_unload(self):
         if self.websocket:
