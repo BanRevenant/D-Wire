@@ -5,7 +5,7 @@ import json
 with open('config.json') as config_file:
     config = json.load(config_file)
 
-
+# Login URL and credentials
 LOGIN_URL = config['factorio_server_manager']['login_url']
 API_URL = config['factorio_server_manager']['api_url']
 USERNAME = config['factorio_server_manager']['username']

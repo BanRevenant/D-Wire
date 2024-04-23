@@ -1,18 +1,39 @@
 import os
+import re
 import discord
 from discord.ext import commands, tasks
+
+JOIN_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[JOIN\] (.+) joined the game"
+RESEARCH_PATTERN = r"\[MSG\] Research (.+) completed\."
+CHAT_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[CHAT\] (.+): (.+)"
+LEAVE_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[LEAVE\] (.+) left the game"
+DEATH_PATTERN = r"\[MSG\] (\w+) was killed by (.+) at \[gps"
+
+def send_discord_notification(event_type, data):
+    if event_type == "JOIN":
+        message = f"**{data}** joined the game."
+    elif event_type == "RESEARCH":
+        message = f"**Research Completed:** {data}"
+    elif event_type == "CHAT":
+        message = f"**{data[0]}** says: {data[1]}"
+    elif event_type == "LEAVE":
+        message = f"**{data}** left the game."
+    elif event_type == "DEATH":
+        message = f"**{data[0]}** was killed by {data[1]}"
+    elif event_type == "SCRIPT_RELOADED":
+        message = "**Script has been modified and reloaded successfully.**"
+    else:
+        message = f"**Unknown Event:** {data}"
+    return message
 
 class ReadLogCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.log_file = "/opt/factorio/factorio-server-console.log"
         self.last_position = self.get_last_position()
-        # print("ReadLogCog initialized.")
 
     def cog_unload(self):
-        # print("ReadLogCog unloading...")
         self.check_log.cancel()
-        # print("check_log task canceled.")
 
     def get_last_position(self):
         try:
@@ -23,47 +44,46 @@ class ReadLogCog(commands.Cog):
         except FileNotFoundError:
             return 0
 
-    @tasks.loop(seconds=5)  # Adjust the interval as needed
+    @tasks.loop(seconds=1)
     async def check_log(self):
-        # print("Checking log file...")
         try:
             with open(self.log_file, "r") as file:
-                # print(f"Opened log file: {self.log_file}")
                 file.seek(self.last_position)
                 new_lines = file.readlines()
-                # print(f"Read new lines: {new_lines}")
                 self.last_position = file.tell()
-                # print(f"Updated last position: {self.last_position}")
-
-                # print(f"New lines: {new_lines}")
 
                 if new_lines:
-                    # print("New lines found.")
                     channel_id = self.bot.config['discord']['channel_id']
-                    # print(f"Channel ID: {channel_id}")
                     channel = self.bot.get_channel(int(channel_id))
-                    # print(f"Channel: {channel}")
                     if channel:
-                        # print("Channel found.")
                         for line in new_lines:
-                            # print(f"Sending line: {line.strip()}")
-                            await channel.send(line.strip())
-                            # print("Line sent to channel.")
-                    # else:
-                        # print("Channel not found.")
-                # else:
-                    # print("No new lines found.")
+                            join_match = re.search(JOIN_PATTERN, line)
+                            research_match = re.search(RESEARCH_PATTERN, line)
+                            chat_match = re.search(CHAT_PATTERN, line)
+                            leave_match = re.search(LEAVE_PATTERN, line)
+                            death_match = re.search(DEATH_PATTERN, line)
+
+                            if join_match:
+                                message = send_discord_notification("JOIN", join_match.group(2))
+                            elif research_match:
+                                message = send_discord_notification("RESEARCH", research_match.group(1))
+                            elif chat_match:
+                                message = send_discord_notification("CHAT", (chat_match.group(2), chat_match.group(3)))
+                            elif leave_match:
+                                message = send_discord_notification("LEAVE", leave_match.group(2))
+                            elif death_match:
+                                message = send_discord_notification("DEATH", (death_match.group(1), death_match.group(2)))
+                            else:
+                                continue
+
+                            await channel.send(message)
 
         except FileNotFoundError:
             pass
-            # print(f"Log file not found: {self.log_file}")
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # print("Bot is ready. Starting log checking...")
         self.check_log.start()
-        # print("check_log task started.")
 
 async def setup(bot):
     await bot.add_cog(ReadLogCog(bot))
-    # print("ReadLogCog loaded.")

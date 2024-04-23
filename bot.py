@@ -21,7 +21,6 @@ bot = commands.Bot(command_prefix=config['discord']['command_prefix'], intents=i
 bot.config = config
 
 async def login_and_get_cookie():
-    """Log in to the Factorio server manager and get a session cookie asynchronously."""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(config['factorio_server_manager']['login_url'], json={'username': config['factorio_server_manager']['username'], 'password': config['factorio_server_manager']['password']}) as response:
@@ -38,7 +37,6 @@ async def login_and_get_cookie():
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
     print("Bot is ready to send commands.")
-
     
     bot.cookie = await login_and_get_cookie()
     if bot.cookie:
@@ -48,7 +46,6 @@ async def on_ready():
         await channel.send("Connected to the Factorio server manager API successfully.")
     else:
         print("Failed to log in to the Factorio server manager API.")
-
     
     asyncio.create_task(monitor_cogs())
 
@@ -67,7 +64,6 @@ async def on_command_error(ctx, error):
         print(f"Error in command: {ctx.command}")
         traceback.print_exception(type(error), error, error.__traceback__)
 
-
 async def load_cogs():
     for filename in os.listdir('./cogs'):
         if filename.endswith('.py'):
@@ -76,6 +72,7 @@ async def load_cogs():
                 print(f'Loaded {filename}')
             except Exception as e:
                 print(f'Failed to load {filename}: {e}')
+
 
 @bot.command(name='reload')
 async def reload_cog(ctx, cog_name):

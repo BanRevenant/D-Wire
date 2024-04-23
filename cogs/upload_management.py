@@ -53,7 +53,7 @@ class UploadManagement(commands.Cog):
         with open(file_path, 'rb') as file:
             await ctx.send(file=discord.File(file, file_path))
         await message.edit(content="Download and upload complete.")
-        os.remove(file_path)  
+        os.remove(file_path)  # Remove the temporary file
 
 async def setup(bot):
     await bot.add_cog(UploadManagement(bot))

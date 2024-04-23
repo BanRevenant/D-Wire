@@ -1,0 +1,258 @@
+INFO:root:Setting up WatcherCog...
+INFO:root:WatcherCog initialized
+INFO:root:WatcherCog setup complete.
+INFO:root:Waiting for bot to be ready...
+INFO:root:Bot is ready.
+INFO:root:Watcher task started for /opt/factorio/factorio-server-console.log
+ERROR:asyncio:Task exception was never retrieved
+future: <Task finished name='Task-2' coro=<Loop._loop() done, defined at /usr/local/lib/python3.10/dist-packages/discord/ext/tasks/__init__.py:200> exception=RuntimeError('Client has not been properly initialised. Please use the login method or asynchronous context manager before calling this method')>
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/discord/ext/tasks/__init__.py", line 202, in _loop
+    await self._call_loop_function('before_loop')
+  File "/usr/local/lib/python3.10/dist-packages/discord/ext/tasks/__init__.py", line 186, in _call_loop_function
+    await coro(self._injected, *args, **kwargs)
+  File "/opt/bot/cogs/watcher.py", line 76, in before_watcher_task
+    await self.send_discord_notification("LEAVE", match_leave.group(2))
+  File "/usr/local/lib/python3.10/dist-packages/discord/client.py", line 1140, in wait_until_ready
+    raise RuntimeError(
+RuntimeError: Client has not been properly initialised. Please use the login method or asynchronous context manager before calling this method
+INFO:root:Setting up WatcherCog...
+INFO:root:Waiting for bot to be ready...
+DEBUG:asyncio:Using selector: EpollSelector
+INFO:discord.client:logging in using static token
+ERROR:asyncio:Task exception was never retrieved
+future: <Task finished name='Task-2' coro=<Loop._loop() done, defined at /usr/local/lib/python3.10/dist-packages/discord/ext/tasks/__init__.py:200> exception=RuntimeError('Client has not been properly initialised. Please use the login method or asynchronous context manager before calling this method')>
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/discord/ext/tasks/__init__.py", line 202, in _loop
+    await self._call_loop_function('before_loop')
+  File "/usr/local/lib/python3.10/dist-packages/discord/ext/tasks/__init__.py", line 186, in _call_loop_function
+    await coro(self._injected, *args, **kwargs)
+  File "/opt/bot/cogs/watcher.py", line 88, in before_watcher_task
+    await self.bot.wait_until_ready()
+  File "/usr/local/lib/python3.10/dist-packages/discord/client.py", line 1140, in wait_until_ready
+    raise RuntimeError(
+RuntimeError: Client has not been properly initialised. Please use the login method or asynchronous context manager before calling this method
+INFO:discord.gateway:Shard ID None has connected to Gateway (Session ID: 4568152ea4a47758d74605770c08cf16).
+DEBUG:websockets.client:= connection is CONNECTING
+DEBUG:websockets.client:> GET /ws HTTP/1.1
+DEBUG:websockets.client:> Host: localhost
+DEBUG:websockets.client:> Upgrade: websocket
+DEBUG:websockets.client:> Connection: Upgrade
+DEBUG:websockets.client:> Sec-WebSocket-Key: z7X526oM+M5EB3CC9TotNA==
+DEBUG:websockets.client:> Sec-WebSocket-Version: 13
+DEBUG:websockets.client:> Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits
+DEBUG:websockets.client:> Cookie: authentication=MTcxMzc2NTU0M3xEWDhFQVFMX2dBQUJFQUVRQUFBbl80QUFBUVp6ZEhKcGJtY01DZ0FJZFhObGNtNWhiV1VHYzNSeWFXNW5EQWNBQldGa2JXbHV8FTogH2Q59U8Lbhv5n0gQHKUmimIohmOIS7h5Ts_bMxE=
+DEBUG:websockets.client:> User-Agent: Python/3.10 websockets/12.0
+DEBUG:websockets.client:< HTTP/1.1 101 Switching Protocols
+DEBUG:websockets.client:< Upgrade: websocket
+DEBUG:websockets.client:< Connection: Upgrade
+DEBUG:websockets.client:< Sec-WebSocket-Accept: 8wVKXqnYI0weW2O8XJuGvFPgHSg=
+DEBUG:websockets.client:= connection is OPEN
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 65 44 8b f8 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 65 44 8b f8 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 4a 21 e2 f7 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 4a 21 e2 f7 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:< PING '' [0 bytes]
+DEBUG:websockets.client:> PONG '' [0 bytes]
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING b6 80 58 80 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG b6 80 58 80 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING '\x02q\x17z' [text, 4 bytes]
+DEBUG:websockets.client:< PONG '\x02q\x17z' [text, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_MODIFY, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_OPEN, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_MODIFY, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_CLOSE_WRITE, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_ATTRIB, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs', wd=1, mask=IN_ISDIR|IN_OPEN, cookie=0, name=''>
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 6f 68 89 f5 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 6f 68 89 f5 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:= connection is CLOSING
+DEBUG:websockets.client:> CLOSE 1000 (OK) [2 bytes]
+DEBUG:websockets.client:= connection is CLOSED
+INFO:root:Setting up WatcherCog...
+INFO:root:Waiting for bot to be ready...
+DEBUG:asyncio:Using selector: EpollSelector
+INFO:discord.client:logging in using static token
+ERROR:asyncio:Task exception was never retrieved
+future: <Task finished name='Task-2' coro=<Loop._loop() done, defined at /usr/local/lib/python3.10/dist-packages/discord/ext/tasks/__init__.py:200> exception=RuntimeError('Client has not been properly initialised. Please use the login method or asynchronous context manager before calling this method')>
+Traceback (most recent call last):
+  File "/usr/local/lib/python3.10/dist-packages/discord/ext/tasks/__init__.py", line 202, in _loop
+    await self._call_loop_function('before_loop')
+  File "/usr/local/lib/python3.10/dist-packages/discord/ext/tasks/__init__.py", line 186, in _call_loop_function
+    await coro(self._injected, *args, **kwargs)
+  File "/opt/bot/cogs/watcher.py", line 88, in before_watcher_task
+    await self.bot.wait_until_ready()
+  File "/usr/local/lib/python3.10/dist-packages/discord/client.py", line 1140, in wait_until_ready
+    raise RuntimeError(
+RuntimeError: Client has not been properly initialised. Please use the login method or asynchronous context manager before calling this method
+INFO:discord.gateway:Shard ID None has connected to Gateway (Session ID: 5d1d7bb692a333921ba419b34fc6a4c6).
+DEBUG:websockets.client:= connection is CONNECTING
+DEBUG:websockets.client:> GET /ws HTTP/1.1
+DEBUG:websockets.client:> Host: localhost
+DEBUG:websockets.client:> Upgrade: websocket
+DEBUG:websockets.client:> Connection: Upgrade
+DEBUG:websockets.client:> Sec-WebSocket-Key: 6HnMIFno3C9njTX0U3KKfg==
+DEBUG:websockets.client:> Sec-WebSocket-Version: 13
+DEBUG:websockets.client:> Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits
+DEBUG:websockets.client:> Cookie: authentication=MTcxMzc2NTY0N3xEWDhFQVFMX2dBQUJFQUVRQUFBbl80QUFBUVp6ZEhKcGJtY01DZ0FJZFhObGNtNWhiV1VHYzNSeWFXNW5EQWNBQldGa2JXbHV8wAyQ7k7NWtbFhtQE8_R_r-xh8L_FK91koIcZuC7Rmjg=
+DEBUG:websockets.client:> User-Agent: Python/3.10 websockets/12.0
+DEBUG:websockets.client:< HTTP/1.1 101 Switching Protocols
+DEBUG:websockets.client:< Upgrade: websocket
+DEBUG:websockets.client:< Connection: Upgrade
+DEBUG:websockets.client:< Sec-WebSocket-Accept: OlzcGG9HOX3VRmXFUuIcSypSlH4=
+DEBUG:websockets.client:= connection is OPEN
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING b9 d1 ad 8c [binary, 4 bytes]
+DEBUG:websockets.client:< PONG b9 d1 ad 8c [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 62 c9 6a f5 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 62 c9 6a f5 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:< PING '' [0 bytes]
+DEBUG:websockets.client:> PONG '' [0 bytes]
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING ca 74 ad c8 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG ca 74 ad c8 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_MODIFY, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_OPEN, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_MODIFY, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_CLOSE_WRITE, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_ATTRIB, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs', wd=1, mask=IN_ISDIR|IN_OPEN, cookie=0, name=''>
+DEBUG:websockets.client:= connection is CLOSING
+DEBUG:websockets.client:> CLOSE 1000 (OK) [2 bytes]
+DEBUG:websockets.client:= connection is CLOSED
+INFO:root:Setting up WatcherCog...
+DEBUG:asyncio:Using selector: EpollSelector
+INFO:discord.client:logging in using static token
+INFO:discord.gateway:Shard ID None has connected to Gateway (Session ID: 629a18cf90867745d6c42460daddcc04).
+DEBUG:websockets.client:= connection is CONNECTING
+DEBUG:websockets.client:> GET /ws HTTP/1.1
+DEBUG:websockets.client:> Host: localhost
+DEBUG:websockets.client:> Upgrade: websocket
+DEBUG:websockets.client:> Connection: Upgrade
+DEBUG:websockets.client:> Sec-WebSocket-Key: jvzHzkyP2jgwQrnIfkrBWw==
+DEBUG:websockets.client:> Sec-WebSocket-Version: 13
+DEBUG:websockets.client:> Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits
+DEBUG:websockets.client:> Cookie: authentication=MTcxMzc2NTcxN3xEWDhFQVFMX2dBQUJFQUVRQUFBbl80QUFBUVp6ZEhKcGJtY01DZ0FJZFhObGNtNWhiV1VHYzNSeWFXNW5EQWNBQldGa2JXbHV8W32sleBFA9KGkdzBN0c9ZZQcBzO-aWNq-4ldLOLIBHU=
+DEBUG:websockets.client:> User-Agent: Python/3.10 websockets/12.0
+DEBUG:websockets.client:< HTTP/1.1 101 Switching Protocols
+DEBUG:websockets.client:< Upgrade: websocket
+DEBUG:websockets.client:< Connection: Upgrade
+DEBUG:websockets.client:< Sec-WebSocket-Accept: DyTM3H+NrmWU3sjD5uM8i5R4K1A=
+DEBUG:websockets.client:= connection is OPEN
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 4b 04 79 c2 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 4b 04 79 c2 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING f4 2b 3c 52 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG f4 2b 3c 52 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_MODIFY, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_OPEN, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_MODIFY, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_CLOSE_WRITE, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_ATTRIB, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs', wd=1, mask=IN_ISDIR|IN_OPEN, cookie=0, name=''>
+DEBUG:websockets.client:= connection is CLOSING
+DEBUG:websockets.client:> CLOSE 1000 (OK) [2 bytes]
+DEBUG:websockets.client:= connection is CLOSED
+INFO:root:Setting up WatcherCog...
+DEBUG:asyncio:Using selector: EpollSelector
+INFO:discord.client:logging in using static token
+INFO:discord.gateway:Shard ID None has connected to Gateway (Session ID: 2c8e74399868e4a64bde4146b0734f6b).
+DEBUG:websockets.client:= connection is CONNECTING
+DEBUG:websockets.client:> GET /ws HTTP/1.1
+DEBUG:websockets.client:> Host: localhost
+DEBUG:websockets.client:> Upgrade: websocket
+DEBUG:websockets.client:> Connection: Upgrade
+DEBUG:websockets.client:> Sec-WebSocket-Key: 1XnHNbEkUTeRAQagn4gJfw==
+DEBUG:websockets.client:> Sec-WebSocket-Version: 13
+DEBUG:websockets.client:> Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits
+DEBUG:websockets.client:> Cookie: authentication=MTcxMzc2NTc3NXxEWDhFQVFMX2dBQUJFQUVRQUFBbl80QUFBUVp6ZEhKcGJtY01DZ0FJZFhObGNtNWhiV1VHYzNSeWFXNW5EQWNBQldGa2JXbHV8hjN_FGmNMtJ4hwXapkf923KS14xemrA50AN7MB2Ceac=
+DEBUG:websockets.client:> User-Agent: Python/3.10 websockets/12.0
+DEBUG:websockets.client:< HTTP/1.1 101 Switching Protocols
+DEBUG:websockets.client:< Upgrade: websocket
+DEBUG:websockets.client:< Connection: Upgrade
+DEBUG:websockets.client:< Sec-WebSocket-Accept: laHvITjtfUtfW6o1xJxn20+wqFc=
+DEBUG:websockets.client:= connection is OPEN
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 5c ab 61 e8 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 5c ab 61 e8 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING ec af fe 4c [binary, 4 bytes]
+DEBUG:websockets.client:< PONG ec af fe 4c [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:< PING '' [0 bytes]
+DEBUG:websockets.client:> PONG '' [0 bytes]
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 13 19 cf c9 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 13 19 cf c9 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 22 95 ca 6d [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 22 95 ca 6d [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 44 ed 3d 3d [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 44 ed 3d 3d [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:< PING '' [0 bytes]
+DEBUG:websockets.client:> PONG '' [0 bytes]
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING '㡗\x14' [text, 4 bytes]
+DEBUG:websockets.client:< PONG '㡗\x14' [text, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING '3z@#' [text, 4 bytes]
+DEBUG:websockets.client:< PONG '3z@#' [text, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 99 d9 50 3e [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 99 d9 50 3e [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:< PING '' [0 bytes]
+DEBUG:websockets.client:> PONG '' [0 bytes]
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 0b 08 f6 b0 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 0b 08 f6 b0 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING db 25 4f 4b [binary, 4 bytes]
+DEBUG:websockets.client:< PONG db 25 4f 4b [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:websockets.client:< PING '' [0 bytes]
+DEBUG:websockets.client:> PONG '' [0 bytes]
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING 0e f2 89 83 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG 0e f2 89 83 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/watcher.py', wd=1, mask=IN_DELETE, cookie=0, name='watcher.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs', wd=1, mask=IN_ISDIR|IN_OPEN, cookie=0, name=''>
+DEBUG:websockets.client:% sending keepalive ping
+DEBUG:websockets.client:> PING f8 61 1f c6 [binary, 4 bytes]
+DEBUG:websockets.client:< PONG f8 61 1f c6 [binary, 4 bytes]
+DEBUG:websockets.client:% received keepalive pong
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/logparse.py', wd=1, mask=IN_CREATE, cookie=0, name='logparse.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/logparse.py', wd=1, mask=IN_OPEN, cookie=0, name='logparse.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/logparse.py', wd=1, mask=IN_MODIFY, cookie=0, name='logparse.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/logparse.py', wd=1, mask=IN_CLOSE_WRITE, cookie=0, name='logparse.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs/logparse.py', wd=1, mask=IN_ATTRIB, cookie=0, name='logparse.py'>
+DEBUG:watchdog.observers.inotify_buffer:in-event <InotifyEvent: src_path=b'./cogs', wd=1, mask=IN_ISDIR|IN_OPEN, cookie=0, name=''>
+DEBUG:websockets.client:= connection is CLOSING
+DEBUG:websockets.client:> CLOSE 1000 (OK) [2 bytes]
+DEBUG:websockets.client:= connection is CLOSED
