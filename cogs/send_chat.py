@@ -70,10 +70,6 @@ class SendChatCog(commands.Cog):
         except Exception as e:
             print(f"Error sending message to WebSocket: {str(e)}")
 
-    @commands.command()
-    async def ping(self, ctx):
-        await ctx.send("Pong!")
-
     async def cog_unload(self):
         if self.websocket:
             await self.websocket.close()
