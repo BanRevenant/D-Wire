@@ -13,7 +13,7 @@ from watchdog.events import FileSystemEventHandler
 with open('config.json') as config_file:
     config = json.load(config_file)
 
-intents = discord.Intents.default()
+intents = discord.Intents.all()
 intents.messages = True
 intents.message_content = True
 

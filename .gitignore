@@ -4,3 +4,4 @@ __pycache__
 config.json
 *.bak
 admins.txt
+watcher.log
