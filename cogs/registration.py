@@ -1,6 +1,7 @@
 import os
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
 import random
 import re
 import string
@@ -27,16 +28,13 @@ class RegistrationCog(commands.Cog):
     def cog_unload(self):
         self.check_log.cancel()
 
-    @commands.command(name='register')
-    async def register(self, ctx):
-        # Delete the !register command message
-        await ctx.message.delete()
-
+    @app_commands.command(name='register', description='Register for the Factorio server')
+    async def register(self, interaction: discord.Interaction):
         # Generate a unique registration code
         code = self.generate_code()
 
         # Store the code and the user's ID in the pending_registrations dictionary
-        self.pending_registrations[code] = ctx.author.id
+        self.pending_registrations[code] = interaction.user.id
 
         # Create an embedded message
         embed = discord.Embed(
@@ -69,9 +67,9 @@ class RegistrationCog(commands.Cog):
         )
 
         # Send the embedded message as an ephemeral response
-        await ctx.send(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        print(f"[DEBUG] Registration code {code} sent to user {ctx.author.id}")
+        print(f"[DEBUG] Registration code {code} sent to user {interaction.user.id}")
 
     def generate_code(self, length=6):
         # Generate a random code of specified length

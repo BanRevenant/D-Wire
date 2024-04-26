@@ -1,7 +1,8 @@
+import discord
 from discord.ext import commands
+from discord import app_commands
 import aiohttp
 import json
-import discord
 
 with open('config.json') as config_file:
     config = json.load(config_file)
@@ -21,23 +22,24 @@ async def send_api_command(endpoint, method='GET', cookie=None):
                 else:
                     return {'error': f"Failed with status {response.status}: {await response.text()}"}
 
-class SavesManagement(commands.Cog):
+class SavesManagementCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
-    async def listsaves(self, ctx):
+    @app_commands.command(name='listsaves', description='Lists all save files on the Factorio server')
+    async def listsaves(self, interaction: discord.Interaction):
         """Lists all save files on the Factorio server."""
+        await interaction.response.defer()
         saves = await send_api_command('/saves/list', cookie=self.bot.cookie)
         if 'error' in saves:
-            await ctx.send(saves['error'])
+            await interaction.followup.send(saves['error'])
             return
         
         embed = discord.Embed(title="Factorio Server Saves", description="List of all save files:", color=discord.Color.blue())
         for save in saves:
             embed.add_field(name="Save File", value=save, inline=False)
 
-        await ctx.send(embed=embed)
+        await interaction.followup.send(embed=embed)
 
 async def setup(bot):
-    await bot.add_cog(SavesManagement(bot))
+    await bot.add_cog(SavesManagementCog(bot))

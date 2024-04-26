@@ -1,4 +1,5 @@
 from discord.ext import commands
+from discord import app_commands
 import aiohttp
 import json
 import discord
@@ -33,17 +34,17 @@ async def download_save_file(save_name, cookie):
             else:
                 return None, f"Failed to download save file: HTTP {response.status}"
 
-class UploadManagement(commands.Cog):
+class UploadManagementCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
-    async def downloadsave(self, ctx, save_name):
+    @app_commands.command(name='downloadsave', description='Download a save file and upload it to the Discord channel')
+    async def downloadsave(self, interaction: discord.Interaction, save_name: str):
         """Downloads a save file and uploads it to the Discord channel."""
-        message = await ctx.send(f"Downloading save file `{save_name}`...")
+        await interaction.response.defer()
         file_data, error = await download_save_file(save_name, self.bot.cookie)
         if error:
-            await message.edit(content=error)
+            await interaction.followup.send(error)
             return
         
         file_path = f"{save_name}.zip"  # Assuming save files are in zip format
@@ -51,9 +52,8 @@ class UploadManagement(commands.Cog):
             file.write(file_data)
         
         with open(file_path, 'rb') as file:
-            await ctx.send(file=discord.File(file, file_path))
-        await message.edit(content="Download and upload complete.")
+            await interaction.followup.send(content=f"Download and upload of `{save_name}` complete.", file=discord.File(file, file_path))
         os.remove(file_path)  # Remove the temporary file
 
 async def setup(bot):
-    await bot.add_cog(UploadManagement(bot))
+    await bot.add_cog(UploadManagementCog(bot))

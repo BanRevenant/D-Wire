@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 
 def get_last_online_message(log_file_path):
     try:
@@ -41,8 +42,8 @@ class OnlineCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(aliases=['online'])
-    async def o(self, ctx):
+    @app_commands.command(name="online", description="Show currently online players and their stats")
+    async def online(self, interaction: discord.Interaction):
         log_file_path = "/opt/factorio/factorio-server-console.log"
         online_message = get_last_online_message(log_file_path)
         if "[ONLINE2]" in online_message:
@@ -54,9 +55,9 @@ class OnlineCog(commands.Cog):
                     username = parts[0].strip()
                     details = " - ".join(parts[1:])
                     embed.add_field(name=f"**{username}**", value=details, inline=False)
-            await ctx.send(embed=embed)
+            await interaction.response.send_message(embed=embed)
         else:
-            await ctx.send("No recent online data available.")
+            await interaction.response.send_message("No recent online data available.")
 
 async def setup(bot):
     await bot.add_cog(OnlineCog(bot))

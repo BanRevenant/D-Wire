@@ -1,4 +1,6 @@
+import discord
 from discord.ext import commands
+from discord import app_commands
 import aiohttp
 import json
 
@@ -30,34 +32,34 @@ async def send_api_command(endpoint, method='GET', payload=None, cookie=None):
                 else:
                     return {'error': f"Failed with status {response.status}: {await response.text()}"}
 
-class ServerManagement(commands.Cog):
+class ServerManagementCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command()
-    async def startserver(self, ctx):
+    @app_commands.command(name='startserver', description='Start the Factorio server with necessary configuration')
+    async def startserver(self, interaction: discord.Interaction):
         """Command to start the Factorio server with necessary configuration."""
         config_data = {
             'game_port': config['factorio_server_manager']['game_port'],
             'rcon_port': config['factorio_server_manager']['rcon_port'],
             'max_players': config['factorio_server_manager']['max_players']
         }
-        await ctx.send("Attempting to start the Factorio server with provided settings...")
+        await interaction.response.defer()  # Defer the response
         result = await send_api_command('/server/start', 'POST', payload=config_data, cookie=self.bot.cookie)
         if 'error' in result:
-            await ctx.send(f"Failed to start server: {result['error']}")
+            await interaction.followup.send(f"Failed to start server: {result['error']}")
         else:
-            await ctx.send("Server started successfully.")
+            await interaction.followup.send("Server started successfully.")
 
-    @commands.command()
-    async def stopserver(self, ctx):
+    @app_commands.command(name='stopserver', description='Stop the Factorio server')
+    async def stopserver(self, interaction: discord.Interaction):
         """Command to stop the Factorio server."""
-        await ctx.send("Attempting to stop the Factorio server...")
+        await interaction.response.defer()  # Defer the response
         result = await send_api_command('/server/stop', cookie=self.bot.cookie)
         if 'error' in result:
-            await ctx.send(result['error'])
+            await interaction.followup.send(result['error'])
         else:
-            await ctx.send("Server stopped successfully.")
+            await interaction.followup.send("Server stopped successfully.")
 
 async def setup(bot):
-    await bot.add_cog(ServerManagement(bot))
+    await bot.add_cog(ServerManagementCog(bot))
