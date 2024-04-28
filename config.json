@@ -1,21 +1,28 @@
 {
   "discord": {
-    "bot_token": "Your Discord Token",
-    "command_prefix": "!",
-    "server_id": "Server the bot operates ID NUMBER",
-    "channel_id": "Channel you want your bot to listen to ID NUMBER",
-    "moderator_role_id": "The right hand man ID NUMBER",
-    "regular_role_id": "People who play alot ID NUMBER",
-    "trusted_role_id": "People who play some ID NUMBER",
-    "normal_role_id": "Scrubs that just registered ID NUMBER"
+    "bot_token": "token",
+    "server_id": "971614304740704257",
+    "channel_id": "1228552030293852211",
+    "moderator_role_id": "1227378030075445248",
+    "regular_role_id": "1232546697377480704",
+    "trusted_role_id": "1232546656084430858",
+    "normal_role_id": "1232546600929333269",
+    "application_id": "1228559912691568712"
   },
   "factorio_server_manager": {
     "api_url": "http://localhost/api",
     "login_url": "http://localhost/api/login",
     "username": "admin",
-    "password": "supersexypassword",
+    "password": "x",
     "game_port": 13337,
     "rcon_port": 27015,
     "max_players": 10
+  },
+  "factorio_mod_portal": {
+    "username": "BanRevenant",
+    "token": "your factorio.com token",
+    "mod_server_url": "https://mods.factorio.com",
+    "mod_list_file": "/opt/factorio/mods/mod-list.json",
+    "mod_path": "/opt/factorio/mods"
   }
 }
