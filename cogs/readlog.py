@@ -37,30 +37,13 @@ def get_location_from_ip(ip_address, reader):
         logger.error(f"Error getting location for IP Address: {ip_address}, Error: {str(e)}")
         return "Unknown"
 
-def send_discord_notification(event_type, data):
-    if event_type == "JOIN":
-        message = f"**{data['username']}** has joined the game from **{data['location']}**."
-    elif event_type == "RESEARCH":
-        message = f"**Research Completed:** {data}"
-    elif event_type == "CHAT":
-        message = f"**{data[0]}** says: {data[1]}"
-    elif event_type == "LEAVE":
-        message = f"**{data}** left the game."
-    elif event_type == "DEATH":
-        message = f"**{data[0]}** was killed by {data[1]}"
-    elif event_type == "SCRIPT_RELOADED":
-        message = "**Script has been modified and reloaded successfully.**"
-    else:
-        message = f"**Unknown Event:** {data}"
-    return message
-
 class ReadLogCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.log_file = "/opt/factorio/factorio-server-console.log"
         self.last_position = self.get_last_position()
-        self.ip_cache = {}
         self.geo_reader = load_geo_database()
+        self.ip_to_username = {}
 
     def cog_unload(self):
         self.check_log.cancel()
@@ -91,19 +74,23 @@ class ReadLogCog(commands.Cog):
                             if ip_match:
                                 ip_address = ip_match.group(1)
                                 location = get_location_from_ip(ip_address, self.geo_reader)
-                                self.ip_cache[ip_address] = location
+                                logger.debug(f"Cached IP Address: {ip_address}, Location: {location}")
+                                self.ip_to_username[ip_address] = (None, location)
 
                             join_match = re.search(JOIN_PATTERN, line)
                             if join_match:
                                 username = join_match.group(2)
-                                ip_match = re.search(IP_PATTERN, line)
-                                if ip_match:
-                                    ip_address = ip_match.group(1)
-                                    location = self.ip_cache.get(ip_address, "Unknown")
+                                ip_address = next((ip for ip, (user, _) in self.ip_to_username.items() if user is None), None)
+                                if ip_address:
+                                    self.ip_to_username[ip_address] = (username, self.ip_to_username[ip_address][1])
+                                    location = self.ip_to_username[ip_address][1]
+                                    logger.debug(f"Join Event - Username: {username}, IP Address: {ip_address}, Location: {location}")
+                                    message = f"**{username}** has joined the game from the **{location}**."
+                                    await channel.send(message)
                                 else:
-                                    location = "Unknown"
-                                message = send_discord_notification("JOIN", {"username": username, "location": location})
-                                await channel.send(message)
+                                    logger.debug(f"Join Event - Username: {username}, IP Address: Not Found")
+                                    message = f"**{username}** has joined the game."
+                                    await channel.send(message)
 
                             research_match = re.search(RESEARCH_PATTERN, line)
                             chat_match = re.search(CHAT_PATTERN, line)
@@ -111,16 +98,16 @@ class ReadLogCog(commands.Cog):
                             death_match = re.search(DEATH_PATTERN, line)
 
                             if research_match:
-                                message = send_discord_notification("RESEARCH", research_match.group(1))
+                                message = f"**Research Completed:** {research_match.group(1)}"
                                 await channel.send(message)
                             elif chat_match:
-                                message = send_discord_notification("CHAT", (chat_match.group(2), chat_match.group(3)))
+                                message = f"**{chat_match.group(2)}** says: {chat_match.group(3)}"
                                 await channel.send(message)
                             elif leave_match:
-                                message = send_discord_notification("LEAVE", leave_match.group(2))
+                                message = f"**{leave_match.group(2)}** left the game."
                                 await channel.send(message)
                             elif death_match:
-                                message = send_discord_notification("DEATH", (death_match.group(1), death_match.group(2)))
+                                message = f"**{death_match.group(1)}** was killed by {death_match.group(2)}"
                                 await channel.send(message)
 
         except FileNotFoundError:
