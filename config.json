@@ -1,6 +1,6 @@
 {
   "discord": {
-    "bot_token": "token",
+    "bot_token": "xbottoke",
     "server_id": "971614304740704257",
     "channel_id": "1228552030293852211",
     "moderator_role_id": "1227378030075445248",
@@ -20,7 +20,7 @@
   },
   "factorio_mod_portal": {
     "username": "BanRevenant",
-    "token": "your factorio.com token",
+    "token": "yourtoke",
     "mod_server_url": "https://mods.factorio.com",
     "mod_list_file": "/opt/factorio/mods/mod-list.json",
     "mod_path": "/opt/factorio/mods"
