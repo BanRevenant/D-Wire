@@ -1,16 +1,20 @@
 # D-Wire Factorio Server Manager Discord Bot
 
-### A tool for managing Factorio servers managed by FSM (Factorio Server Manager).
+### A tool for managing a Factorio server without the need of any other software.
 This discord bot enables the ability to manage your factorio server directly from your discord channel of choice while giving some many other desired features.
 
 ## Features
 * Allows control of the Factorio Server, starting and stopping the Factorio binary.
 * Allows the management of save files, upload, download and delete saves.
-* (in development) Manage installed mods, upload new ones and more
+* Manage installed mods (limited to 25 total) Download, Enable, Disable, Remove.
 * Allow viewing of the server logs and current configuration.
-* Shows online players by changing the status of the bot itself
+* Manage important settings of the server inside of discord. No need for manual file edits.
+* Shows online players by changing the status of the bot itself, DND for server running, Idle for server offline.
 * (in development) Manages and Tracks users stats for killing biters
+* Send chat between the discord server and the factorio server
+* (in development) registration system which allows you to bind discord accounts to factorio accounts.
+* Server status command which shows important server information
+* Country tracking of players joining the server
 
 ## Authors
-
-
+* BanRevenant - Discord : revenantplays

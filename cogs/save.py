@@ -1,27 +1,13 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import aiohttp
 import json
 import os
 
 with open('config.json') as config_file:
     config = json.load(config_file)
 
-API_URL = config['factorio_server_manager']['api_url']
-SAVES_DIRECTORY = "/opt/factorio/saves"
-
-async def send_api_command(endpoint, method='POST', data=None, cookie=None):
-    """Send commands to the Factorio Server Manager API using aiohttp."""
-    async with aiohttp.ClientSession() as session:
-        headers = {'Authorization': f'Bearer {cookie}'}
-        url = f"{API_URL}{endpoint}"
-        
-        async with session.post(url, data=data, headers=headers) as response:
-            if response.status == 200:
-                return await response.text(), None
-            else:
-                return None, {'error': f"Failed with status {response.status}: {await response.text()}"}
+SAVES_DIRECTORY = config['factorio_server']['saves_directory']
 
 class SaveCog(commands.Cog):
     def __init__(self, bot):
@@ -51,19 +37,7 @@ class SaveCog(commands.Cog):
             # Download the uploaded file
             await file.save(file_path)
             
-            # Upload the save file to the Factorio server
-            with open(file_path, 'rb') as save_file:
-                data = aiohttp.FormData()
-                data.add_field('file', save_file, filename=file.filename)
-                response, error = await send_api_command('/saves/upload', data=data, cookie=self.bot.cookie)
-                
-            if error:
-                await interaction.followup.send(f"Error uploading save file: {error['error']}")
-            else:
-                await interaction.followup.send(f"Save file `{file.filename}` uploaded successfully!")
-            
-            # Remove the temporary file
-            os.remove(file_path)
+            await interaction.followup.send(f"Save file `{file.filename}` uploaded successfully!")
         else:
             await interaction.response.send_message("Invalid file type. Please upload a zip file.", ephemeral=True)
 

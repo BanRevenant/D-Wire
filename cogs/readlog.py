@@ -46,7 +46,7 @@ def get_location_from_ip(ip_address, reader):
 class ReadLogCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.log_file = "/opt/factorio/factorio-server-console.log"
+        self.log_file = bot.config['factorio_server']['server_log_file']
         self.last_position = self.get_last_position()
         self.geo_reader = load_geo_database()
         self.ip_to_username = {}
@@ -144,4 +144,4 @@ class ReadLogCog(commands.Cog):
         self.check_log.start()
 
 async def setup(bot):
-    await bot.add_cog(ReadLogCog(bot))
+    await bot.add_cog(ReadLogCog(bot)) 

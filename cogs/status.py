@@ -1,26 +1,13 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import aiohttp
+import re
 import json
 
 with open('config.json') as config_file:
     config = json.load(config_file)
 
-API_URL = config['factorio_server_manager']['api_url']
-
-async def send_api_command(endpoint, method='GET', cookie=None):
-    """Send commands to the Factorio Server Manager API using aiohttp."""
-    async with aiohttp.ClientSession() as session:
-        headers = {'Content-Type': 'application/json'}
-        url = f"{API_URL}{endpoint}"
-        
-        if method == 'GET':
-            async with session.get(url, cookies={'authentication': cookie}, headers=headers) as response:
-                if response.status == 200:
-                    return await response.json(), None
-                else:
-                    return None, {'error': f"Failed with status {response.status}: {await response.text()}"}
+SERVER_LOG_FILE = config['factorio_server']['server_log_file']
 
 class StatusCog(commands.Cog):
     def __init__(self, bot):
@@ -30,47 +17,41 @@ class StatusCog(commands.Cog):
     async def serverstatus(self, interaction: discord.Interaction):
         """Get the current status of the Factorio server."""
         await interaction.response.defer()
-        status, error = await send_api_command('/server/status', cookie=self.bot.cookie)
-        if error:
-            await interaction.followup.send(f"Error retrieving server status: {error['error']}")
-            return
+
+        server_management_cog = self.bot.get_cog('ServerManagementCog')
+        server_status = "Online" if server_management_cog.is_server_running() else "Offline"
         
-        embed = discord.Embed(title="Factorio Server Status", color=discord.Color.blue())
-        
-        if 'running' in status:
-            embed.add_field(name="Running", value=status['running'], inline=False)
+        if server_status == "Offline":
+            embed = discord.Embed(title="Factorio Server Status", description="Server is currently offline.", color=discord.Color.red())
         else:
-            embed.add_field(name="Running", value="Unknown", inline=False)
-        
-        if 'savefile' in status:
-            embed.add_field(name="Save File", value=status['savefile'], inline=False)
-        else:
-            embed.add_field(name="Save File", value="Unknown", inline=False)
-        
-        if 'latency' in status:
-            embed.add_field(name="Latency", value=status['latency'], inline=False)
-        else:
-            embed.add_field(name="Latency", value="Unknown", inline=False)
-        
-        if 'port' in status:
-            embed.add_field(name="Port", value=status['port'], inline=False)
-        else:
-            embed.add_field(name="Port", value="Unknown", inline=False)
-        
-        if 'bindip' in status:
-            embed.add_field(name="Bind IP", value=status['bindip'], inline=False)
-        else:
-            embed.add_field(name="Bind IP", value="Unknown", inline=False)
-        
-        if 'fac_version' in status:
-            embed.add_field(name="Factorio Version", value=status['fac_version'], inline=False)
-        else:
-            embed.add_field(name="Factorio Version", value="Unknown", inline=False)
-        
-        if 'base_mod_version' in status:
-            embed.add_field(name="Base Mod Version", value=status['base_mod_version'], inline=False)
-        else:
-            embed.add_field(name="Base Mod Version", value="Unknown", inline=False)
+            with open(SERVER_LOG_FILE, 'r') as log_file:
+                log_content = log_file.read()
+
+            if "Goodbye" in log_content:
+                embed = discord.Embed(title="Factorio Server Status", description="Server is shutting down.", color=discord.Color.orange())
+            else:
+                save_file_match = re.search(r'Loading map (.+?\.zip)', log_content)
+                save_file = save_file_match.group(1) if save_file_match else "Unknown"
+
+                port_match = re.search(r'Hosting game at IP ADDR:\({.+?:(\d+)}\)', log_content)
+                port = port_match.group(1) if port_match else "Unknown"
+
+                ip_match = re.search(r'Own address is IP ADDR:\({(.+?:\d+)}\)', log_content)
+                ip_address = ip_match.group(1) if ip_match else "Unknown"
+
+                version_match = re.search(r'Factorio (\d+\.\d+\.\d+)', log_content)
+                factorio_version = version_match.group(1) if version_match else "Unknown"
+
+                base_mod_match = re.search(r'Loading mod base (\d+\.\d+\.\d+)', log_content)
+                base_mod_version = base_mod_match.group(1) if base_mod_match else "Unknown"
+
+                embed = discord.Embed(title="Factorio Server Status", color=discord.Color.green())
+                embed.add_field(name="Status", value=server_status, inline=False)
+                embed.add_field(name="Save File", value=save_file, inline=False)
+                embed.add_field(name="Port", value=port, inline=False)
+                embed.add_field(name="IP Address", value=ip_address, inline=False)
+                embed.add_field(name="Factorio Version", value=factorio_version, inline=False)
+                embed.add_field(name="Base Mod Version", value=base_mod_version, inline=False)
         
         await interaction.followup.send(embed=embed)
 

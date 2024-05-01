@@ -1,7 +1,0 @@
-.idea/
-.venv/
-__pycache__
-*.bak
-admins.txt
-watcher.log
-config.json

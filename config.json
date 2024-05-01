@@ -1,28 +1,33 @@
 {
   "discord": {
-    "bot_token": "xbottoke",
-    "server_id": "971614304740704257",
+    "bot_token": "x",
     "channel_id": "1228552030293852211",
+  	"server_id": "971614304740704257",
     "moderator_role_id": "1227378030075445248",
     "regular_role_id": "1232546697377480704",
     "trusted_role_id": "1232546656084430858",
     "normal_role_id": "1232546600929333269",
     "application_id": "1228559912691568712"
   },
-  "factorio_server_manager": {
-    "api_url": "http://localhost/api",
-    "login_url": "http://localhost/api/login",
-    "username": "admin",
-    "password": "x",
-    "game_port": 13337,
-    "rcon_port": 27015,
-    "max_players": 10
+  "factorio_server": {
+    "executable": "/opt/factorio/bin/x64/factorio",
+    "default_port": 13337,
+    "default_bind_address": "0.0.0.0",
+    "default_rcon_port": 27015,
+    "default_rcon_password": "password",
+    "server_settings_file": "/opt/factorio/config/server-settings.json",
+    "server_adminlist_file": "/opt/factorio/config/server-adminlist.json",
+    "saves_directory": "/opt/factorio/saves",
+    "mods_directory": "/opt/factorio/mods",
+    "config_directory": "/opt/factorio/config",
+    "rcon_host": "localhost",
+    "server_log_file": "/opt/factorio/verbose.log",
+    "verbose_log_file": "/opt/factorio/verbose.log"
   },
   "factorio_mod_portal": {
     "username": "BanRevenant",
-    "token": "yourtoke",
-    "mod_server_url": "https://mods.factorio.com",
-    "mod_list_file": "/opt/factorio/mods/mod-list.json",
+    "token": "x",
     "mod_path": "/opt/factorio/mods"
   }
 }
+
