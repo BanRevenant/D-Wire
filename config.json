@@ -11,6 +11,7 @@
   },
   "factorio_server": {
     "executable": "/opt/factorio/bin/x64/factorio",
+	"factorio_install_location": "/opt/",
     "default_port": 13337,
     "default_bind_address": "0.0.0.0",
     "default_rcon_port": 27015,
