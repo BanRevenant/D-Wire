@@ -3,7 +3,6 @@ from discord.ext import commands
 from factorio_rcon import RCONClient
 import json
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 
 class DiscordToServerCog(commands.Cog):
     def __init__(self, bot):
@@ -15,10 +14,9 @@ class DiscordToServerCog(commands.Cog):
         self.channel_id = self.bot.config['discord']['channel_id']
 
     async def connect_rcon(self):
-        loop = asyncio.get_event_loop()
         try:
-            self.rcon_client = await loop.run_in_executor(None, RCONClient, self.rcon_host, self.rcon_port, self.rcon_password)
-            await loop.run_in_executor(None, self.rcon_client.connect)
+            self.rcon_client = RCONClient(self.rcon_host, self.rcon_port, self.rcon_password)
+            await self.bot.loop.run_in_executor(None, self.rcon_client.connect)
             print("RCON client connected successfully.")
             return True
         except Exception as e:
@@ -29,7 +27,7 @@ class DiscordToServerCog(commands.Cog):
     async def disconnect_rcon(self):
         if self.rcon_client:
             try:
-                self.rcon_client.close()
+                await self.bot.loop.run_in_executor(None, self.rcon_client.close)
                 print("RCON client disconnected.")
             except Exception as e:
                 print(f"Error disconnecting RCON: {str(e)}")
@@ -58,8 +56,7 @@ class DiscordToServerCog(commands.Cog):
 
         try:
             rcon_command = f"/cchat {message.author.display_name}: {message.content}"
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, self.rcon_client.send_command, rcon_command)
+            response = await self.bot.loop.run_in_executor(None, self.rcon_client.send_command, rcon_command)
             print(f"RCON command sent: {rcon_command}")
             print(f"RCON response: {response}")
         except Exception as e:
