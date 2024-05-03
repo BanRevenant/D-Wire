@@ -1,7 +1,10 @@
+import os
+clear = lambda: os.system('cls' if os.name == 'nt' else 'clear')
+clear()
+
 import discord
 from discord.ext import commands
 from discord import app_commands
-import os
 import json
 import asyncio
 import traceback
