@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands, tasks
 import geoip2.database
 import logging
-import time
+import traceback
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -77,56 +77,11 @@ class ReadLogCog(commands.Cog):
                     channel = self.bot.get_channel(int(channel_id))
                     if channel:
                         for line in new_lines:
-                            ip_match = re.search(IP_PATTERN, line)
-                            if ip_match:
-                                ip_address = ip_match.group(1)
-                                country, state = get_location_from_ip(ip_address, self.geo_reader)
-                                logger.debug(f"Cached IP Address: {ip_address}, Location: {country}, {state}")
-                                self.ip_to_username[ip_address] = (None, country, state)
-                                self.ip_timestamps[ip_address] = time.time()
-
-                            connection_refused_match = re.search(CONNECTION_REFUSED_PATTERN, line)
-                            if connection_refused_match:
-                                ip_address = connection_refused_match.group(1)
-                                username = connection_refused_match.group(2)
-                                if ip_address in self.ip_to_username:
-                                    logger.debug(f"Removing cached IP Address: {ip_address}, Location: {self.ip_to_username[ip_address][1]}, {self.ip_to_username[ip_address][2]} for Username: {username}")
-                                    del self.ip_to_username[ip_address]
-                                    del self.ip_timestamps[ip_address]
-
-                            join_match = re.search(JOIN_PATTERN, line)
-                            if join_match:
-                                username = join_match.group(2)
-                                ip_address = next((ip for ip, (user, _, _) in self.ip_to_username.items() if user is None), None)
-                                if ip_address:
-                                    self.ip_to_username[ip_address] = (username, self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2])
-                                    country, state = self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2]
-                                    logger.debug(f"Join Event - Username: {username}, IP Address: {ip_address}, Location: {country}, {state}")
-                                    message = f"**{username}** has joined the game from **{state}, {country}**."
-                                    await channel.send(message)
-                                    del self.ip_timestamps[ip_address]  # Remove the timestamp since the user has joined
-                                else:
-                                    logger.debug(f"Join Event - Username: {username}, IP Address: Not Found")
-                                    message = f"**{username}** has joined the game."
-                                    await channel.send(message)
-
-                            research_match = re.search(RESEARCH_PATTERN, line)
-                            chat_match = re.search(CHAT_PATTERN, line)
-                            leave_match = re.search(LEAVE_PATTERN, line)
-                            death_match = re.search(DEATH_PATTERN, line)
-
-                            if research_match:
-                                message = f"**Research Completed:** {research_match.group(1)}"
-                                await channel.send(message)
-                            elif chat_match:
-                                message = f"**{chat_match.group(2)}** says: {chat_match.group(3)}"
-                                await channel.send(message)
-                            elif leave_match:
-                                message = f"**{leave_match.group(2)}** left the game."
-                                await channel.send(message)
-                            elif death_match:
-                                message = f"**{death_match.group(1)}** was killed by {death_match.group(2)}"
-                                await channel.send(message)
+                            try:
+                                await self.process_log_line(line, channel)
+                            except Exception as e:
+                                logger.error(f"Error processing log line: {line}, Error: {str(e)}")
+                                logger.error(traceback.format_exc())
 
                         # Remove IP addresses that have timed out
                         current_time = time.time()
@@ -138,10 +93,65 @@ class ReadLogCog(commands.Cog):
 
         except FileNotFoundError:
             pass
+        except Exception as e:
+            logger.error(f"Error checking log file: {str(e)}")
+            logger.error(traceback.format_exc())
+
+    async def process_log_line(self, line, channel):
+        ip_match = re.search(IP_PATTERN, line)
+        if ip_match:
+            ip_address = ip_match.group(1)
+            country, state = get_location_from_ip(ip_address, self.geo_reader)
+            logger.debug(f"Cached IP Address: {ip_address}, Location: {country}, {state}")
+            self.ip_to_username[ip_address] = (None, country, state)
+            self.ip_timestamps[ip_address] = time.time()
+
+        connection_refused_match = re.search(CONNECTION_REFUSED_PATTERN, line)
+        if connection_refused_match:
+            ip_address = connection_refused_match.group(1)
+            username = connection_refused_match.group(2)
+            if ip_address in self.ip_to_username:
+                logger.debug(f"Removing cached IP Address: {ip_address}, Location: {self.ip_to_username[ip_address][1]}, {self.ip_to_username[ip_address][2]} for Username: {username}")
+                del self.ip_to_username[ip_address]
+                del self.ip_timestamps[ip_address]
+
+        join_match = re.search(JOIN_PATTERN, line)
+        if join_match:
+            username = join_match.group(2)
+            ip_address = next((ip for ip, (user, _, _) in self.ip_to_username.items() if user is None), None)
+            if ip_address:
+                self.ip_to_username[ip_address] = (username, self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2])
+                country, state = self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2]
+                logger.debug(f"Join Event - Username: {username}, IP Address: {ip_address}, Location: {country}, {state}")
+                message = f"**{username}** has joined the game from **{state}, {country}**."
+                await channel.send(message)
+                del self.ip_timestamps[ip_address]  # Remove the timestamp since the user has joined
+            else:
+                logger.debug(f"Join Event - Username: {username}, IP Address: Not Found")
+                message = f"**{username}** has joined the game."
+                await channel.send(message)
+
+        research_match = re.search(RESEARCH_PATTERN, line)
+        chat_match = re.search(CHAT_PATTERN, line)
+        leave_match = re.search(LEAVE_PATTERN, line)
+        death_match = re.search(DEATH_PATTERN, line)
+
+        if research_match:
+            message = f"**Research Completed:** {research_match.group(1)}"
+            await channel.send(message)
+        elif chat_match:
+            message = f"**{chat_match.group(2)}** says: {chat_match.group(3)}"
+            await channel.send(message)
+        elif leave_match:
+            message = f"**{leave_match.group(2)}** left the game."
+            await channel.send(message)
+        elif death_match:
+            message = f"**{death_match.group(1)}** was killed by {death_match.group(2)}"
+            await channel.send(message)
 
     @commands.Cog.listener()
     async def on_ready(self):
         self.check_log.start()
 
 async def setup(bot):
-    await bot.add_cog(ReadLogCog(bot)) 
+    await bot.add_cog(ReadLogCog(bot))
