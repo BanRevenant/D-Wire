@@ -5,6 +5,7 @@ from discord.ext import commands, tasks
 import geoip2.database
 import logging
 import traceback
+import time  # Import the time module
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -87,9 +88,11 @@ class ReadLogCog(commands.Cog):
                         current_time = time.time()
                         for ip_address, timestamp in list(self.ip_timestamps.items()):
                             if current_time - timestamp > TIMEOUT_SECONDS:
-                                logger.debug(f"Removing timed out IP Address: {ip_address}, Location: {self.ip_to_username[ip_address][1]}, {self.ip_to_username[ip_address][2]}")
-                                del self.ip_to_username[ip_address]
-                                del self.ip_timestamps[ip_address]
+                                if ip_address in self.ip_to_username:
+                                    logger.debug(f"Removing timed out IP Address: {ip_address}, Location: {self.ip_to_username[ip_address][1]}, {self.ip_to_username[ip_address][2]}")
+                                    del self.ip_to_username[ip_address]
+                                if ip_address in self.ip_timestamps:
+                                    del self.ip_timestamps[ip_address]
 
         except FileNotFoundError:
             pass
