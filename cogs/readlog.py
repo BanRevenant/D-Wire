@@ -18,6 +18,7 @@ CHAT_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[CHAT\] (.+): (.+)"
 LEAVE_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[LEAVE\] (.+) left the game"
 DEATH_PATTERN = r"\[MSG\] (\w+) was killed by (.+) at \[gps"
 CONNECTION_REFUSED_PATTERN = r"Refusing connection for address \(IP ADDR:\((\{[0-9.]+:[0-9]+\})\)\), username \((.+)\). UserVerificationMissing"
+GPS_PATTERN = r"\[gps=[-+]?\d*\.\d+,[-+]?\d*\.\d+\]"  # Pattern to match GPS tags
 
 TIMEOUT_SECONDS = 10  # Time after which an unjoined user's IP address will be removed from the cache
 
@@ -138,6 +139,12 @@ class ReadLogCog(commands.Cog):
         chat_match = re.search(CHAT_PATTERN, line)
         leave_match = re.search(LEAVE_PATTERN, line)
         death_match = re.search(DEATH_PATTERN, line)
+
+        # Check for GPS tags
+        gps_match = re.search(GPS_PATTERN, line)
+        if gps_match:
+            logger.debug(f"Skipping message containing GPS tag: {line.strip()}")
+            return  # Skip this line and don't send it to Discord
 
         if research_match:
             message = f"**Research Completed:** {research_match.group(1)}"
