@@ -130,13 +130,13 @@ class ModsCog(commands.Cog):
             await interaction.response.send_message("No mods found on the server.", ephemeral=True)
             return
 
-        options = [discord.SelectOption(label=mod_name, value=mod_name) for mod_name in mods_list]
+        # Split the mods_list into chunks of 25 mods
+        mod_chunks = [mods_list[i:i + 25] for i in range(0, len(mods_list), 25)]
 
-        select = discord.ui.Select(placeholder="Select a mod", options=options)
+        install_button = discord.ui.Button(label="Install", style=discord.ButtonStyle.primary, custom_id="install_button")
+        install_button.callback = lambda interaction: interaction.response.send_modal(InstallModal())
 
-        async def select_callback(interaction: discord.Interaction):
-            selected_mod = select.values[0]
-
+        async def select_callback(interaction: discord.Interaction, selected_mod):
             enable_button = discord.ui.Button(label="Enable", style=discord.ButtonStyle.success, custom_id="enable_button")
             disable_button = discord.ui.Button(label="Disable", style=discord.ButtonStyle.secondary, custom_id="disable_button")
             remove_button = discord.ui.Button(label="Remove", style=discord.ButtonStyle.danger, custom_id="remove_button")
@@ -180,7 +180,6 @@ class ModsCog(commands.Cog):
             remove_button.callback = remove_callback
 
             view = discord.ui.View()
-            view.add_item(select)
             view.add_item(enable_button)
             view.add_item(disable_button)
             view.add_item(remove_button)
@@ -188,20 +187,42 @@ class ModsCog(commands.Cog):
 
             await interaction.response.edit_message(content=f"Selected mod: {selected_mod}", view=view)
 
-        select.callback = select_callback
+        current_page = 0
+        views = []
 
-        async def install_callback(interaction: discord.Interaction):
-            modal = InstallModal()
-            await interaction.response.send_modal(modal)
+        def update_view(current_page):
+            mod_chunk = mod_chunks[current_page]
+            options = [discord.SelectOption(label=mod_name, value=mod_name) for mod_name in mod_chunk]
+            select = discord.ui.Select(placeholder=f"Select a mod (Page {current_page + 1}/{len(mod_chunks)})", options=options)
+            select.callback = lambda interaction: select_callback(interaction, select.values[0])
 
-        install_button = discord.ui.Button(label="Install", style=discord.ButtonStyle.primary, custom_id="install_button")
-        install_button.callback = install_callback
+            prev_button = discord.ui.Button(label="Previous", style=discord.ButtonStyle.secondary, custom_id="prev_button", disabled=current_page == 0)
+            next_button = discord.ui.Button(label="Next", style=discord.ButtonStyle.secondary, custom_id="next_button", disabled=current_page == len(mod_chunks) - 1)
 
-        view = discord.ui.View()
-        view.add_item(select)
-        view.add_item(install_button)
+            async def prev_callback(interaction: discord.Interaction):
+                nonlocal current_page
+                current_page -= 1
+                await interaction.response.edit_message(view=update_view(current_page))
 
-        await interaction.response.send_message("Please select a mod:", view=view)
+            async def next_callback(interaction: discord.Interaction):
+                nonlocal current_page
+                current_page += 1
+                await interaction.response.edit_message(view=update_view(current_page))
+
+            prev_button.callback = prev_callback
+            next_button.callback = next_callback
+
+            view = discord.ui.View()
+            view.add_item(select)
+            view.add_item(install_button)
+            view.add_item(prev_button)
+            view.add_item(next_button)
+            return view
+
+        if mod_chunks:
+            await interaction.response.send_message("Please select a mod:", view=update_view(current_page))
+        else:
+            await interaction.response.send_message("No mods found on the server.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(ModsCog(bot))
