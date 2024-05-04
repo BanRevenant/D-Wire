@@ -44,7 +44,12 @@ class OnlineCog(commands.Cog):
 
     @app_commands.command(name="online", description="Show currently online players and their stats")
     async def online(self, interaction: discord.Interaction):
-        log_file_path = "/opt/factorio/factorio-server-console.log"
+        # Load the log file path from the config.json file
+        import json
+        with open("config.json", "r") as config_file:
+            config = json.load(config_file)
+        log_file_path = config["factorio_server"]["verbose_log_file"]
+
         online_message = get_last_online_message(log_file_path)
         if "[ONLINE2]" in online_message:
             player_info = parse_player_data(online_message)
