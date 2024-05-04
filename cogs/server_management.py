@@ -127,6 +127,21 @@ class ServerManagementCog(commands.Cog):
             except Exception as e:
                 await interaction.followup.send(f"Failed to stop server: {str(e)}")
 
+    @app_commands.command(name='restart', description='Restart the Factorio server')
+    async def restart(self, interaction: discord.Interaction):
+        """Command to restart the Factorio server."""
+        if not self.is_server_running():
+            await interaction.response.send_message("The server is not running.")
+        else:
+            await interaction.response.defer()  # Defer the response
+            try:
+                await self.stopserver(interaction)  # Stop the server using the existing stopserver method
+                await self.startserver(interaction)  # Start the server using the existing startserver method
+                await interaction.followup.send("Server restarted successfully.")
+                await self.update_bot_status()
+            except Exception as e:
+                await interaction.followup.send(f"Failed to restart server: {str(e)}")
+
 async def setup(bot):
     cog = ServerManagementCog(bot)
     await bot.add_cog(cog)
