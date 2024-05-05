@@ -7,9 +7,13 @@ import logging
 import traceback
 import time  # Import the time module
 
-# Set up logging
+# Set up logging for your own code
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Set a higher logging level for the discord library
+discord_logger = logging.getLogger('discord')
+discord_logger.setLevel(logging.WARNING)
 
 IP_PATTERN = r"from\(IP ADDR:\((\{[0-9.]+:[0-9]+\})\)\)"
 JOIN_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[JOIN\] (.+) joined the game"
@@ -26,7 +30,7 @@ def load_geo_database():
     database_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'GeoLite2-City.mmdb')
     try:
         reader = geoip2.database.Reader(database_path)
-        # logger.debug(f"GeoLite2 City database loaded successfully from {database_path}")
+        logger.debug(f"GeoLite2 City database loaded successfully from {database_path}")
         return reader
     except Exception as e:
         logger.error(f"Error loading GeoLite2 City database from {database_path}, Error: {str(e)}")
@@ -42,7 +46,7 @@ def get_location_from_ip(ip_address, reader):
         logger.debug(f"IP Address: {ip_address}, Country: {country}, State: {state}")
         return country, state
     except Exception as e:
-       #logger.error(f"Error getting location for IP Address: {ip_address}, Error: {str(e)}")
+        logger.error(f"Error getting location for IP Address: {ip_address}, Error: {str(e)}")
         return "Unknown", "Unknown"
 
 class ReadLogCog(commands.Cog):
