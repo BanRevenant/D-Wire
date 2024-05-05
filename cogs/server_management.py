@@ -130,17 +130,50 @@ class ServerManagementCog(commands.Cog):
     @app_commands.command(name='restart', description='Restart the Factorio server')
     async def restart(self, interaction: discord.Interaction):
         """Command to restart the Factorio server."""
-        if not self.is_server_running():
-            await interaction.response.send_message("The server is not running.")
-        else:
-            await interaction.response.defer()  # Defer the response
+        await interaction.response.defer()  # Defer the response
+        try:
+            # Load server information from the file
+            self.load_server_info()
+
+            # Terminate the running server process if it exists
+            if self.server_pid:
+                process = psutil.Process(self.server_pid)
+                for proc in process.children(recursive=True):
+                    proc.kill()
+                process.kill()
+                self.server_pid = None
+                self.server_command = None
+                os.remove(SERVER_INFO_FILE)
+
+                # Wait for the process to terminate
+                while process.is_running():
+                    continue
+
+            # Start a new server process
+            command = [
+                FACTORIO_EXE,
+                '--port', str(DEFAULT_PORT),
+                '--bind', DEFAULT_BIND_ADDRESS,
+                '--rcon-port', str(DEFAULT_RCON_PORT),
+                '--rcon-password', DEFAULT_RCON_PASSWORD,
+                '--server-settings', DEFAULT_SERVER_SETTINGS,
+                '--server-adminlist', DEFAULT_SERVER_ADMINLIST,
+                '--start-server-load-latest'
+            ]
+
+            verbose_log_file = open(VERBOSE_LOG_FILE, 'w')
+            self.server_process = subprocess.Popen(command, stdout=verbose_log_file, stderr=subprocess.STDOUT, start_new_session=True)
+            self.server_pid = self.server_process.pid
+            self.server_command = ' '.join(command)
+            self.save_server_info(self.server_command, self.server_pid)
             try:
-                await self.stopserver(interaction)  # Stop the server using the existing stopserver method
-                await self.startserver(interaction)  # Start the server using the existing startserver method
-                await interaction.followup.send("Server restarted successfully.")
-                await self.update_bot_status()
-            except Exception as e:
-                await interaction.followup.send(f"Failed to restart server: {str(e)}")
+                setsid()
+            except PermissionError:
+                pass  # Ignore the permission error and continue
+            await interaction.followup.send("Server restarted successfully.")
+            await self.update_bot_status()
+        except Exception as e:
+            await interaction.followup.send(f"Failed to restart server: {str(e)}")
 
 async def setup(bot):
     cog = ServerManagementCog(bot)
