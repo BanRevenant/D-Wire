@@ -6,7 +6,7 @@ This discord bot enables the ability to manage your factorio server directly fro
 ## Features
 * Allows control of the Factorio Server, starting and stopping the Factorio binary.
 * Allows the management of save files, upload, download and delete saves.
-* Manage installed mods (limited to 25 total) Download, Enable, Disable, Remove.
+* Manage installed mods Download, Enable, Disable, Remove.
 * Allow viewing of the server logs and current configuration.
 * Manage important settings of the server inside of discord. No need for manual file edits.
 * Shows online players by changing the status of the bot itself, DND for server running, Idle for server offline.
