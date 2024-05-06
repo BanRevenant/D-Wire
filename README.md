@@ -15,6 +15,6 @@ This discord bot enables the ability to manage your factorio server directly fro
 * (in development) registration system which allows you to bind discord accounts to factorio accounts.
 * Server status command which shows important server information
 * Country tracking of players joining the server
-
+* Ability to create your own cogs, manage them by enable, disable, upload and remove them. Allows for a simple way to manage features provided by D-Wire
 ## Authors
 * BanRevenant - Discord : revenantplays
