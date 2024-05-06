@@ -29,6 +29,7 @@
     "username": "BanRevenant",
     "token": "x",
     "mod_path": "/opt/factorio/mods"
-  }
+  },
+  "disabled_cogs": []
 }
 
