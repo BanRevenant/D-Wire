@@ -12,7 +12,7 @@ ACCESS_PATTERN = r"\[ACCESS\] (\w+) (\w+) (\d+)"
 class RegistrationCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.log_file = "/opt/factorio/factorio-server-console.log"
+        self.log_file = self.config['factorio_server']['server_log_file']
         self.last_position = 0
         self.pending_registrations = {}
 

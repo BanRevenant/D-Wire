@@ -4,3 +4,4 @@ python-dotenv
 requests
 geoip2
 aiohttp
+factorio-rcon-py
