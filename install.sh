@@ -7,4 +7,4 @@ curl -sSL https://raw.githubusercontent.com/BanRevenant/D-Wire/master/deploy_bot
 chmod +x deploy_bot.sh
 
 # Run the script
-./deploy_bot.sh
+bash --init-file deploy_bot.sh
