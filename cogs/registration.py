@@ -12,13 +12,12 @@ ACCESS_PATTERN = r"\[ACCESS\] (\w+) (\w+) (\d+)"
 class RegistrationCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.log_file = self.config['factorio_server']['server_log_file']
-        self.last_position = 0
-        self.pending_registrations = {}
-
         with open('config.json') as config_file:
             self.config = json.load(config_file)
+            self.log_file = self.config['factorio_server']['server_log_file']
             self.server_id = self.config['discord']['server_id']
+        self.last_position = 0
+        self.pending_registrations = {}
 
     @commands.Cog.listener()
     async def on_ready(self):
