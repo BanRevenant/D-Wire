@@ -1,0 +1,6 @@
+discord.py
+psutil
+python-dotenv
+requests
+geoip2
+aiohttp
