@@ -15,6 +15,9 @@ sudo mkdir -p $SAVE_DIR
 sudo mkdir -p $MOD_DIR
 sudo mkdir -p $CONFIG_DIR
 
+# Create the verbose.log file in the game directory ( we do this to prevent console error spamming until factorio is installed )
+sudo touch $GAME_DIR/verbose.log
+
 # Clone the GitHub repository
 sudo git clone $REPO_URL $INSTALL_DIR
 
@@ -52,3 +55,4 @@ read -p "Press Enter to start the bot for the first time..."
 
 # Run the bot
 sudo python3 bot.py
+
