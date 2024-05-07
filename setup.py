@@ -8,11 +8,17 @@ def install_pip():
     except ImportError:
         print("pip not found. Installing pip...")
         try:
-            subprocess.check_call([sys.executable, '-m', 'ensurepip', '--default-pip'])
+            get_pip_script = "get-pip.py"
+            get_pip_url = "https://bootstrap.pypa.io/get-pip.py"
+            subprocess.check_call(["curl", "-o", get_pip_script, get_pip_url])
+            subprocess.check_call([sys.executable, get_pip_script])
             print("pip installed successfully.")
         except subprocess.CalledProcessError as e:
             print(f"Error installing pip: {str(e)}")
             sys.exit(1)
+        finally:
+            if os.path.exists("get-pip.py"):
+                os.remove("get-pip.py")
 
 def install_dependencies():
     try:
