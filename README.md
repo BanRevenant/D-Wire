@@ -22,9 +22,9 @@ https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&sc
 * Allow viewing of the server logs and current configuration.
 * Manage important settings of the server inside of discord. No need for manual file edits.
 * Shows online players by changing the status of the bot itself, DND for server running, Idle for server offline.
-* (in development) Manages and Tracks users stats for killing biters
+* (rudimentary) Manages and Tracks users stats for killing biters
 * Send chat between the discord server and the factorio server
-* (in development)(working) registration system which allows you to bind discord accounts to factorio accounts.
+* Registration system which allows you to bind discord accounts to factorio accounts.
 * Server status command which shows important server information
 * Country tracking of players joining the server
 * Ability to create your own cogs, manage them by enable, disable, upload and remove them. Allows for a simple way to manage features provided by D-Wire
