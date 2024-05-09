@@ -16,8 +16,17 @@ class RegistrationCog(commands.Cog):
             self.config = json.load(config_file)
             self.log_file = self.config['factorio_server']['server_log_file']
             self.server_id = self.config['discord']['server_id']
+        self.parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.registrations_file = os.path.join(self.parent_dir, "registrations.json")
         self.last_position = 0
         self.pending_registrations = {}
+        self.create_registrations_file()
+
+    def create_registrations_file(self):
+        if not os.path.isfile(self.registrations_file):
+            with open(self.registrations_file, "w") as file:
+                json.dump({}, file)
+            print(f"Created new registrations file: {self.registrations_file}")
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -114,6 +123,9 @@ class RegistrationCog(commands.Cog):
                                 await member.add_roles(role)
                                 await member.send(f"Thank you for registering, {name}! You have been assigned the role: {role.name}")
                                 print(f"[DEBUG] Assigned role '{role.name}' to member {member.id}")
+
+                                # Store the registration in the registrations.json file
+                                self.store_registration(user_id, name)
                             else:
                                 await member.send(f"Role with ID '{role_id}' not found.")
                                 print(f"[DEBUG] Role with ID '{role_id}' not found in the server")
@@ -140,6 +152,20 @@ class RegistrationCog(commands.Cog):
             'normal': self.config['discord']['normal_role_id']
         }
         return role_mapping.get(rank.lower())
+
+    def store_registration(self, user_id, player_name):
+        # Load the existing registrations from the file
+        with open(self.registrations_file, "r") as file:
+            registrations = json.load(file)
+
+        # Add the new registration to the dictionary
+        registrations[str(user_id)] = player_name
+
+        # Save the updated registrations back to the file
+        with open(self.registrations_file, "w") as file:
+            json.dump(registrations, file, indent=4)
+
+        print(f"[DEBUG] Stored registration for user {user_id} with player name '{player_name}'")
 
 async def setup(bot):
     await bot.add_cog(RegistrationCog(bot))
