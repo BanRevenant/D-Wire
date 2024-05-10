@@ -96,19 +96,41 @@ class StatsCog(commands.Cog):
         if player_name:
             conn = sqlite3.connect(self.db_file)
             c = conn.cursor()
-            c.execute("SELECT action, unit, weapon, count FROM player_stats WHERE player_name = ?", (player_name,))
+            c.execute("SELECT unit, weapon, count FROM player_stats WHERE player_name = ?", (player_name,))
             stats = c.fetchall()
             conn.close()
 
             if stats:
-                total_kills = sum(count for _, _, _, count in stats)
-                embed = discord.Embed(title=f"Statistics for {player_name}", color=discord.Color.green())
-                embed.add_field(name="Total Kills", value=str(total_kills))
+                total_kills = sum(count for _, _, count in stats)
 
-                for action, unit, weapon, count in stats:
-                    embed.add_field(name=f"{action} {unit} with {weapon}", value=str(count), inline=False)
+                # Group the stats by weapon
+                weapon_stats = {}
+                for unit, weapon, count in stats:
+                    weapon_stats.setdefault(weapon, 0)
+                    weapon_stats[weapon] += count
 
+                # Group the stats by unit
+                unit_stats = {}
+                for unit, weapon, count in stats:
+                    unit_stats.setdefault(unit, 0)
+                    unit_stats[unit] += count
+
+                # Create the embed
+                embed = discord.Embed(color=discord.Color.green())
+                embed.add_field(name=f"Statistics for {player_name}", value=f"Total Kills : {total_kills}")
+                embed.add_field(name="\u200b", value="\u200b")
+                embed.add_field(name="\u200b", value="\u200b")
+                bug_kills_value = "\n".join([f"{unit.capitalize()}: {count}" for unit, count in sorted(unit_stats.items(), key=lambda x: x[1], reverse=True)])
+                embed.add_field(name="Bug Kills:", value=bug_kills_value, inline=True)
+
+                weapon_kills_value = "\n".join([f"{weapon.capitalize()}: {count}" for weapon, count in sorted(weapon_stats.items(), key=lambda x: x[1], reverse=True)])
+                embed.add_field(name="Weapon Kills:", value=weapon_kills_value, inline=True)
+
+                embed.set_footer(text="Statistics provided by D-Wire")
+
+                # Send the embed
                 await interaction.response.send_message(embed=embed)
+
             else:
                 await interaction.response.send_message(f"No statistics found for {player_name}.")
         else:
