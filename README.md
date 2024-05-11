@@ -22,7 +22,7 @@ https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&sc
 * Allow viewing of the server logs and current configuration.
 * Manage important settings of the server inside of discord. No need for manual file edits.
 * Shows online players by changing the status of the bot itself, DND for server running, Idle for server offline.
-* (rudimentary) Manages and Tracks users stats for killing biters
+* Manages and Tracks users stats for killing biters
 * Send chat between the discord server and the factorio server
 * Registration system which allows you to bind discord accounts to factorio accounts.
 * Server status command which shows important server information
