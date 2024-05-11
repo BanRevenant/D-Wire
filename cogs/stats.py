@@ -9,6 +9,8 @@ import asyncio
 import json
 
 STATS_PATTERN = r"\[STATS-E1\] \[([^]]+)\] ([^[]+) \[([^]]+)\] with \[([^]]+)\]"
+DEATH_PATTERN = r"\[STATS-D2\] \[([^]]+)\] killed by \[([^]]+)\] force \[enemy\]"
+PLACE_PATTERN = r"\[ACT\] ([^[\]]+) placed"
 
 class StatsCog(commands.Cog):
     def __init__(self, bot):
@@ -17,7 +19,7 @@ class StatsCog(commands.Cog):
         self.db_file = os.path.join(self.parent_dir, "player_stats.db")
         self.registrations_file = os.path.join(self.parent_dir, "registrations.json")
         self.log_file = bot.config['factorio_server']['verbose_log_file']
-        self.last_position = 0
+        self.load_last_position()
         self.create_database()
         self.create_registrations_file()
 
@@ -30,6 +32,10 @@ class StatsCog(commands.Cog):
         c = conn.cursor()
         c.execute("""CREATE TABLE IF NOT EXISTS player_stats
                      (player_name TEXT, action TEXT, unit TEXT, weapon TEXT, count INTEGER)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS player_deaths
+                     (player_name TEXT, killed_by TEXT, count INTEGER)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS player_placed
+                     (player_name TEXT, count INTEGER)""")
         conn.commit()
         conn.close()
         if not db_exists:
@@ -46,6 +52,18 @@ class StatsCog(commands.Cog):
                 json.dump({}, file)
             print(f"Created new registrations file: {self.registrations_file}")
 
+    def load_last_position(self):
+        last_position_file = os.path.join(self.parent_dir, "last_position.txt")
+        if os.path.isfile(last_position_file):
+            with open(last_position_file, "r") as file:
+                self.last_position = int(file.read().strip())
+        else:
+            self.last_position = 0
+
+    def store_last_position(self):
+        with open(os.path.join(self.parent_dir, "last_position.txt"), "w") as file:
+            file.write(str(self.last_position))
+
     @commands.Cog.listener()
     async def on_ready(self):
         print(f"StatsCog is ready.")
@@ -55,13 +73,21 @@ class StatsCog(commands.Cog):
     async def check_log(self):
         try:
             with open(self.log_file, "r") as file:
+                # Check if the log file has changed
+                if os.path.getsize(self.log_file) < self.last_position:
+                    print(f"Log file has changed. Resetting last_position to 0.")
+                    self.last_position = 0
+
                 file.seek(self.last_position)
                 new_lines = file.readlines()
                 self.last_position = file.tell()
 
                 for line in new_lines:
                     await self.process_stats(line)
+                    await self.process_deaths(line)
+                    await self.process_placed(line)
 
+            self.store_last_position()
         except FileNotFoundError:
             print(f"Log file not found: {self.log_file}")
 
@@ -70,6 +96,18 @@ class StatsCog(commands.Cog):
         if match:
             player_name, action, unit, weapon = match.groups()
             self.update_database(player_name, action, unit, weapon)
+
+    async def process_deaths(self, line):
+        match = re.search(DEATH_PATTERN, line)
+        if match:
+            player_name, killed_by = match.groups()
+            self.update_deaths_database(player_name, killed_by)
+
+    async def process_placed(self, line):
+        match = re.search(PLACE_PATTERN, line)
+        if match:
+            player_name = match.group(1)
+            self.update_placed_database(player_name)
 
     def update_database(self, player_name, action, unit, weapon):
         conn = sqlite3.connect(self.db_file)
@@ -87,54 +125,81 @@ class StatsCog(commands.Cog):
         conn.commit()
         conn.close()
 
+    def update_deaths_database(self, player_name, killed_by):
+        conn = sqlite3.connect(self.db_file)
+        c = conn.cursor()
+        c.execute("SELECT count FROM player_deaths WHERE player_name = ? AND killed_by = ?", (player_name, killed_by))
+        result = c.fetchone()
+        if result:
+            count = result[0] + 1
+            c.execute("UPDATE player_deaths SET count = ? WHERE player_name = ? AND killed_by = ?", (count, player_name, killed_by))
+        else:
+            c.execute("INSERT INTO player_deaths (player_name, killed_by, count) VALUES (?, ?, 1)", (player_name, killed_by))
+        conn.commit()
+        conn.close()
+
+    def update_placed_database(self, player_name):
+        conn = sqlite3.connect(self.db_file)
+        c = conn.cursor()
+        c.execute("SELECT count FROM player_placed WHERE player_name = ?", (player_name,))
+        result = c.fetchone()
+        if result:
+            count = result[0] + 1
+            c.execute("UPDATE player_placed SET count = ? WHERE player_name = ?", (count, player_name))
+        else:
+            c.execute("INSERT INTO player_placed (player_name, count) VALUES (?, 1)", (player_name,))
+        conn.commit()
+        conn.close()
+
     @app_commands.command(name='stats', description='Get player statistics')
-    async def stats(self, interaction: discord.Interaction):
-        # Find the player name based on their Discord ID
-        member = interaction.user
+    async def stats(self, interaction: discord.Interaction, member: discord.Member = None):
+        # Find the player name based on the Discord ID
+        if member is None:
+            member = interaction.user
         player_name = await self.get_player_name(member.id)
 
         if player_name:
             conn = sqlite3.connect(self.db_file)
             c = conn.cursor()
+
+            # Fetch kill stats
             c.execute("SELECT unit, weapon, count FROM player_stats WHERE player_name = ?", (player_name,))
             stats = c.fetchall()
+
+            # Fetch death stats
+            c.execute("SELECT killed_by, count FROM player_deaths WHERE player_name = ?", (player_name,))
+            death_stats = c.fetchall()
+
+            # Fetch placed stats
+            c.execute("SELECT count FROM player_placed WHERE player_name = ?", (player_name,))
+            placed_stats = c.fetchone()
+
             conn.close()
 
-            if stats:
+            if stats or death_stats or placed_stats:
                 total_kills = sum(count for _, _, count in stats)
-
-                # Group the stats by weapon
-                weapon_stats = {}
-                for unit, weapon, count in stats:
-                    weapon_stats.setdefault(weapon, 0)
-                    weapon_stats[weapon] += count
-
-                # Group the stats by unit
-                unit_stats = {}
-                for unit, weapon, count in stats:
-                    unit_stats.setdefault(unit, 0)
-                    unit_stats[unit] += count
+                total_deaths = sum(count for _, count in death_stats)
+                total_placed = placed_stats[0] if placed_stats else 0
 
                 # Create the embed
                 embed = discord.Embed(color=discord.Color.green())
-                embed.add_field(name=f"Statistics for {player_name}", value=f"Total Kills : {total_kills}")
-                embed.add_field(name="\u200b", value="\u200b")
-                embed.add_field(name="\u200b", value="\u200b")
-                bug_kills_value = "\n".join([f"{unit.capitalize()}: {count}" for unit, count in sorted(unit_stats.items(), key=lambda x: x[1], reverse=True)])
+                embed.add_field(name=f"Statistics for {player_name}", value=f"Total Kills: {total_kills}\nTotal Deaths: {total_deaths}\nPlaced Objects: {total_placed}", inline=False)
+                embed.set_thumbnail(url=member.display_avatar.url)  # Set the user's avatar as the thumbnail
+
+                bug_kills_value = "\n".join([f"{unit.capitalize()}: {count}" for unit, count in sorted(self.unit_stats(stats), key=lambda x: x[1], reverse=True)])
                 embed.add_field(name="Bug Kills:", value=bug_kills_value, inline=True)
 
-                weapon_kills_value = "\n".join([f"{weapon.capitalize()}: {count}" for weapon, count in sorted(weapon_stats.items(), key=lambda x: x[1], reverse=True)])
+                weapon_kills_value = "\n".join([f"{weapon.capitalize()}: {count}" for weapon, count in sorted(self.weapon_stats(stats), key=lambda x: x[1], reverse=True)])
                 embed.add_field(name="Weapon Kills:", value=weapon_kills_value, inline=True)
 
                 embed.set_footer(text="Statistics provided by D-Wire")
 
                 # Send the embed
                 await interaction.response.send_message(embed=embed)
-
             else:
                 await interaction.response.send_message(f"No statistics found for {player_name}.")
         else:
-            await interaction.response.send_message("You need to register before checking your stats.")
+            await interaction.response.send_message(f"{member.mention} hasn't registered yet. Please encourage them to register using the `/register` command.")
 
     @app_commands.command(name='wipedata', description='Wipe player statistics data')
     @app_commands.default_permissions(manage_guild=True)
@@ -157,6 +222,20 @@ class StatsCog(commands.Cog):
         player_name = registrations.get(str(user_id))
 
         return player_name
+
+    def unit_stats(self, stats):
+        unit_stats = {}
+        for unit, _, count in stats:
+            unit_stats.setdefault(unit, 0)
+            unit_stats[unit] += count
+        return unit_stats.items()
+
+    def weapon_stats(self, stats):
+        weapon_stats = {}
+        for _, weapon, count in stats:
+            weapon_stats.setdefault(weapon, 0)
+            weapon_stats[weapon] += count
+        return weapon_stats.items()
 
 async def setup(bot):
     await bot.add_cog(StatsCog(bot))
