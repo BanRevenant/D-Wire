@@ -11,6 +11,7 @@ import json
 STATS_PATTERN = r"\[STATS-E1\] \[([^]]+)\] ([^[]+) \[([^]]+)\] with \[([^]]+)\]"
 DEATH_PATTERN = r"\[STATS-D2\] \[([^]]+)\] killed by \[([^]]+)\] force \[enemy\]"
 PLACE_PATTERN = r"\[ACT\] ([^[\]]+) placed"
+STATSME_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[CHAT\] (.+): statsme"
 
 class StatsCog(commands.Cog):
     def __init__(self, bot):
@@ -86,6 +87,7 @@ class StatsCog(commands.Cog):
                     await self.process_stats(line)
                     await self.process_deaths(line)
                     await self.process_placed(line)
+                    await self.process_statsme(line)
 
             self.store_last_position()
         except FileNotFoundError:
@@ -108,6 +110,12 @@ class StatsCog(commands.Cog):
         if match:
             player_name = match.group(1)
             self.update_placed_database(player_name)
+
+    async def process_statsme(self, line):
+        match = re.search(STATSME_PATTERN, line)
+        if match:
+            player_name = match.group(2)
+            await self.post_player_stats(player_name)
 
     def update_database(self, player_name, action, unit, weapon):
         conn = sqlite3.connect(self.db_file)
@@ -158,6 +166,9 @@ class StatsCog(commands.Cog):
             member = interaction.user
         player_name = await self.get_player_name(member.id)
 
+        await self.post_player_stats(player_name, interaction)
+
+    async def post_player_stats(self, player_name, interaction=None):
         if player_name:
             conn = sqlite3.connect(self.db_file)
             c = conn.cursor()
@@ -184,7 +195,6 @@ class StatsCog(commands.Cog):
                 # Create the embed
                 embed = discord.Embed(color=discord.Color.green())
                 embed.add_field(name=f"Statistics for {player_name}", value=f"Total Kills: {total_kills}\nTotal Deaths: {total_deaths}\nPlaced Objects: {total_placed}", inline=False)
-                embed.set_thumbnail(url=member.display_avatar.url)  # Set the user's avatar as the thumbnail
 
                 bug_kills_value = "\n".join([f"{unit.capitalize()}: {count}" for unit, count in sorted(self.unit_stats(stats), key=lambda x: x[1], reverse=True)])
                 embed.add_field(name="Bug Kills:", value=bug_kills_value, inline=True)
@@ -195,11 +205,21 @@ class StatsCog(commands.Cog):
                 embed.set_footer(text="Statistics provided by D-Wire")
 
                 # Send the embed
-                await interaction.response.send_message(embed=embed)
+                if interaction:
+                    await interaction.response.send_message(embed=embed)
+                else:
+                    channel_id = self.bot.config['discord']['channel_id']
+                    channel = self.bot.get_channel(int(channel_id))
+                    if channel:
+                        await channel.send(embed=embed)
             else:
-                await interaction.response.send_message(f"No statistics found for {player_name}.")
+                if interaction:
+                    await interaction.response.send_message(f"No statistics found for {player_name}.")
+                else:
+                    print(f"No statistics found for {player_name}.")
         else:
-            await interaction.response.send_message(f"{member.mention} hasn't registered yet. Please encourage them to register using the `/register` command.")
+            if interaction:
+                await interaction.response.send_message("Player not found. Please make sure you have registered using the `/register` command.")
 
     @app_commands.command(name='wipedata', description='Wipe player statistics data')
     @app_commands.default_permissions(manage_guild=True)
