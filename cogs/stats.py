@@ -56,8 +56,11 @@ class StatsCog(commands.Cog):
     def load_last_position(self):
         last_position_file = os.path.join(self.parent_dir, "last_position.txt")
         if os.path.isfile(last_position_file):
-            with open(last_position_file, "r") as file:
-                self.last_position = int(file.read().strip())
+            try:
+                with open(last_position_file, "r") as file:
+                    self.last_position = int(file.read().strip())
+            except ValueError:
+                self.last_position = 0
         else:
             self.last_position = 0
 
@@ -238,8 +241,13 @@ class StatsCog(commands.Cog):
         with open(self.registrations_file, "r") as file:
             registrations = json.load(file)
 
+        try:
+            user_id_str = str(user_id)
+        except ValueError:
+            return None
+
         # Find the player name associated with the Discord user ID
-        player_name = registrations.get(str(user_id))
+        player_name = registrations.get(user_id_str)
 
         return player_name
 
