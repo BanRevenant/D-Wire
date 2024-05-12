@@ -1,21 +1,23 @@
 {
   "discord": {
     "bot_token": "x",
-    "channel_id": "1228552030293852211",
+    "channel_id": "1183123103488954438",
     "server_id": "971614304740704257",
+    "owner_id": "892467251146522634",
     "moderator_role_id": "1227378030075445248",
     "regular_role_id": "1232546697377480704",
     "trusted_role_id": "1232546656084430858",
     "normal_role_id": "1232546600929333269",
+    "error_channel_id": "1183123103488954438",
     "application_id": "1228559912691568712"
   },
   "factorio_server": {
     "executable": "/opt/factorio/bin/x64/factorio",
-	  "factorio_install_location": "/opt/",
+    "factorio_install_location": "/opt/",
     "default_port": 13337,
     "default_bind_address": "0.0.0.0",
     "default_rcon_port": 27015,
-    "default_rcon_password": "password",
+    "default_rcon_password": "6Ar.ADsx8J9x",
     "server_settings_file": "/opt/factorio/config/server-settings.json",
     "server_adminlist_file": "/opt/factorio/config/server-adminlist.json",
     "saves_directory": "/opt/factorio/saves",
@@ -32,4 +34,3 @@
   },
   "disabled_cogs": []
 }
-
