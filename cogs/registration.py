@@ -6,6 +6,7 @@ import random
 import re
 import string
 import json
+import datetime
 
 ACCESS_PATTERN = r"\[ACCESS\] (\w+) (\w+) (\d+)"
 
@@ -20,6 +21,7 @@ class RegistrationCog(commands.Cog):
         self.registrations_file = os.path.join(self.parent_dir, "registrations.json")
         self.last_position = 0
         self.pending_registrations = {}
+        self.registration_timestamps = {}
         self.create_registrations_file()
 
     def create_registrations_file(self):
@@ -32,6 +34,7 @@ class RegistrationCog(commands.Cog):
     async def on_ready(self):
         print(f"RegistrationCog is ready.")
         self.check_log.start()
+        self.remove_expired_registrations()
 
     def cog_unload(self):
         self.check_log.cancel()
@@ -43,6 +46,9 @@ class RegistrationCog(commands.Cog):
 
         # Store the code and the user's ID in the pending_registrations dictionary
         self.pending_registrations[code] = interaction.user.id
+
+        # Store the registration timestamp
+        self.registration_timestamps[code] = datetime.datetime.now()
 
         # Create an embedded message
         embed = discord.Embed(
@@ -133,8 +139,9 @@ class RegistrationCog(commands.Cog):
                             await member.send(f"Unknown rank: {rank}")
                             print(f"[DEBUG] Unknown rank: {rank}")
 
-                        # Remove the pending registration
+                        # Remove the pending registration and timestamp
                         del self.pending_registrations[code]
+                        del self.registration_timestamps[code]
                         print(f"[DEBUG] Removed pending registration for member {member.id}")
                     else:
                         print(f"[DEBUG] Member {user_id} not found in the guild")
@@ -166,6 +173,17 @@ class RegistrationCog(commands.Cog):
             json.dump(registrations, file, indent=4)
 
         print(f"[DEBUG] Stored registration for user {user_id} with player name '{player_name}'")
+
+    def remove_expired_registrations(self):
+        """Remove registrations that are older than one hour."""
+        one_hour_ago = datetime.datetime.now() - datetime.timedelta(hours=1)
+        expired_codes = [code for code, timestamp in self.registration_timestamps.items() if timestamp < one_hour_ago]
+
+        for code in expired_codes:
+            del self.pending_registrations[code]
+            del self.registration_timestamps[code]
+
+        print(f"[DEBUG] Removed {len(expired_codes)} expired registration(s)")
 
 async def setup(bot):
     await bot.add_cog(RegistrationCog(bot))
