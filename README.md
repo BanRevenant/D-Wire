@@ -16,8 +16,8 @@ https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&sc
 
 
 ## Features
-* Allows control of the Factorio Server, starting and stopping the Factorio binary.
-* Allows the management of save files, upload, download and delete saves.
+* Allows control of the Factorio Server, starting and stopping the Factorio binary along with some parameters.
+* Allows the management of save files, upload, download and delete saves. ( Downloads limited by discord 8MB)
 * Manage installed mods Download, Enable, Disable, Remove.
 * Allow viewing of the server logs and current configuration.
 * Manage important settings of the server inside of discord. No need for manual file edits.
@@ -28,7 +28,14 @@ https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&sc
 * Server status command which shows important server information
 * Country tracking of players joining the server
 * Ability to create your own cogs, manage them by enable, disable, upload and remove them. Allows for a simple way to manage features provided by D-Wire
-
+* Automatically augment a new save-game file with softmod code to provide massive amounts of new factorio utility.
+* Ban, Kick, Mute players.
+* Change player spawn locations on the map.
+* Enable and disable cheats with auto researching.
+* A self management system which enables and disables local features.
+* Recharting game map while server is running.
+* Outputs server status , pids, base versions, on command.
+* Upload server log files directly to discord.
 
 ## Development
 All of the above features work entirely, any in development features will probably cause you issues. Recommend disabling cogs that are in development. If you have any questions on functionality or want to see the discord bot in action hit up our discord. I usually respond within the hour.
