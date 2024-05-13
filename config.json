@@ -32,5 +32,6 @@
     "token": "x",
     "mod_path": "/opt/factorio/mods"
   },
-  "disabled_cogs": []
+  "disabled_cogs": [],
+  "debug_mode": false
 }
