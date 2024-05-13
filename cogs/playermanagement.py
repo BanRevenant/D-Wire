@@ -35,8 +35,11 @@ class PlayerManagementCog(commands.Cog):
         try:
             response = await self.bot.loop.run_in_executor(None, self.rcon_client.send_command, command)
             print(f"RCON command sent: {command}")
-            print(f"RCON response: {response}")
-            return response
+            if response:
+                print(f"RCON response: {response}")
+                return response
+            else:
+                return "Command executed successfully."
         except Exception as e:
             print(f"Error sending RCON command: {str(e)}")
             self.rcon_client = None
@@ -76,42 +79,38 @@ class PlayerManagementCog(commands.Cog):
     @commands.hybrid_command(name='ban', description='Ban a player from the server')
     @commands.has_permissions(ban_members=True)
     @commands.guild_only()
-    async def banish(self, ctx, name: str):
+    async def ban(self, ctx, name: str):
         response = await self.send_rcon_command(f"/ban {name}")
         await ctx.send(response)
 
     @commands.hybrid_command(name='unban', description='Unban a player from the server')
     @commands.has_permissions(ban_members=True)
     @commands.guild_only()
-    async def unbanish(self, ctx, name: str):
+    async def unban(self, ctx, name: str):
         response = await self.send_rcon_command(f"/unban {name}")
         await ctx.send(response)
 
     @commands.hybrid_command(name='unbanish', description='Unbanish a player on the server')
-    @commands.has_permissions(ban_members=True)
     @commands.guild_only()
     async def unbanish(self, ctx, name: str):
         response = await self.send_rcon_command(f"/unbanish {name}")
         await ctx.send(response)
 
     @commands.hybrid_command(name='banish', description='Banish a player on the server')
-    @commands.has_permissions(ban_members=True)
     @commands.guild_only()
-    async def unbanish(self, ctx, name: str):
+    async def banish(self, ctx, name: str):
         response = await self.send_rcon_command(f"/banish {name}")
         await ctx.send(response)
 
     @commands.hybrid_command(name='mute', description='Mute a player on the server')
-    @commands.has_permissions(ban_members=True)
     @commands.guild_only()
-    async def unbanish(self, ctx, name: str):
+    async def mute(self, ctx, name: str):
         response = await self.send_rcon_command(f"/mute {name}")
         await ctx.send(response)
 
     @commands.hybrid_command(name='unmute', description='Unmute a player on the server')
-    @commands.has_permissions(ban_members=True)
     @commands.guild_only()
-    async def unbanish(self, ctx, name: str):
+    async def unmute(self, ctx, name: str):
         response = await self.send_rcon_command(f"/unmute {name}")
         await ctx.send(response)
 
