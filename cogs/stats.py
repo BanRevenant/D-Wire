@@ -216,10 +216,17 @@ class StatsCog(commands.Cog):
                     if channel:
                         await channel.send(embed=embed)
             else:
+                # Create a new embed indicating no stats
+                no_stats_embed = discord.Embed(color=discord.Color.red(), description=f"{player_name} has no recorded stats yet.")
+
+                # Send the no stats embed
                 if interaction:
-                    await interaction.response.send_message(f"No statistics found for {player_name}.")
+                    await interaction.response.send_message(embed=no_stats_embed)
                 else:
-                    print(f"No statistics found for {player_name}.")
+                    channel_id = self.bot.config['discord']['channel_id']
+                    channel = self.bot.get_channel(int(channel_id))
+                    if channel:
+                        await channel.send(embed=no_stats_embed)
         else:
             if interaction:
                 await interaction.response.send_message("Player not found. Please make sure you have registered using the `/register` command.")
