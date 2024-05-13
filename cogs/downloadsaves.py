@@ -33,7 +33,11 @@ class SavesManagementView(discord.ui.View):
         selected_save = dropdown.values[0]
         save_path = os.path.join(SAVES_DIRECTORY, selected_save)
         if os.path.exists(save_path):
-            await interaction.response.send_message(file=discord.File(save_path))
+            file_size = os.path.getsize(save_path)
+            if file_size > 8388608:  # 8 MB in bytes
+                await interaction.response.send_message(f"The selected save file (`{selected_save}`) is too large to upload ({file_size / (1024 * 1024):.2f} MB). Discord has a file size limit of 8 MB.")
+            else:
+                await interaction.response.send_message(file=discord.File(save_path))
         else:
             await interaction.response.send_message("The selected save file no longer exists.")
 
