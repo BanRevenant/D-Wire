@@ -73,18 +73,46 @@ class PlayerManagementCog(commands.Cog):
         response = await self.send_rcon_command(f"/kick {name}")
         await ctx.send(response)
 
-    @commands.hybrid_command(name='banish', description='Ban a player from the server')
+    @commands.hybrid_command(name='ban', description='Ban a player from the server')
     @commands.has_permissions(ban_members=True)
     @commands.guild_only()
     async def banish(self, ctx, name: str):
         response = await self.send_rcon_command(f"/ban {name}")
         await ctx.send(response)
 
-    @commands.hybrid_command(name='unbanish', description='Unban a player from the server')
+    @commands.hybrid_command(name='unban', description='Unban a player from the server')
     @commands.has_permissions(ban_members=True)
     @commands.guild_only()
     async def unbanish(self, ctx, name: str):
         response = await self.send_rcon_command(f"/unban {name}")
+        await ctx.send(response)
+
+    @commands.hybrid_command(name='unbanish', description='Unbanish a player on the server')
+    @commands.has_permissions(ban_members=True)
+    @commands.guild_only()
+    async def unbanish(self, ctx, name: str):
+        response = await self.send_rcon_command(f"/unbanish {name}")
+        await ctx.send(response)
+
+    @commands.hybrid_command(name='banish', description='Banish a player on the server')
+    @commands.has_permissions(ban_members=True)
+    @commands.guild_only()
+    async def unbanish(self, ctx, name: str):
+        response = await self.send_rcon_command(f"/banish {name}")
+        await ctx.send(response)
+
+    @commands.hybrid_command(name='mute', description='Mute a player on the server')
+    @commands.has_permissions(ban_members=True)
+    @commands.guild_only()
+    async def unbanish(self, ctx, name: str):
+        response = await self.send_rcon_command(f"/mute {name}")
+        await ctx.send(response)
+
+    @commands.hybrid_command(name='unmute', description='Unmute a player on the server')
+    @commands.has_permissions(ban_members=True)
+    @commands.guild_only()
+    async def unbanish(self, ctx, name: str):
+        response = await self.send_rcon_command(f"/unmute {name}")
         await ctx.send(response)
 
 async def setup(bot):
