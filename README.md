@@ -1,5 +1,7 @@
 # D-Wire Factorio Server Manager Discord Bot
 
+### Development hiatus until 5/22 ( Replacing computer parts that failed )
+
 ### A tool for managing a Factorio server without the need of any other software or tools.
 This discord bot enables the ability to manage your factorio server directly from your discord channel of choice while giving some many other desired features. The only thing required during the setup process is a discord token. Everything else is processed in discord.
 
