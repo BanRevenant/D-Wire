@@ -5,13 +5,11 @@ from discord.ext import commands, tasks
 import geoip2.database
 import logging
 import traceback
-import time  # Import the time module
+import time
 
-# Set up logging for your own code
+# Set up logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# Set a higher logging level for the discord library
 discord_logger = logging.getLogger('discord')
 discord_logger.setLevel(logging.WARNING)
 
@@ -22,9 +20,9 @@ CHAT_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[CHAT\] (.+): (.+)"
 LEAVE_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[LEAVE\] (.+) left the game"
 DEATH_PATTERN = r"\[MSG\] (\w+) was killed by (.+) at \[gps"
 CONNECTION_REFUSED_PATTERN = r"Refusing connection for address \(IP ADDR:\((\{[0-9.]+:[0-9]+\})\)\), username \((.+)\). UserVerificationMissing"
-GPS_PATTERN = r"\[gps=[-+]?\d*\.\d+,[-+]?\d*\.\d+\]"  # Pattern to match GPS tags
+GPS_PATTERN = r"\[gps=[-+]?\d*\.\d+,[-+]?\d*\.\d+\]" 
 
-TIMEOUT_SECONDS = 30  # Time after which an unjoined user's IP address will be removed from the cache
+TIMEOUT_SECONDS = 30
 
 def load_geo_database():
     database_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'GeoLite2-City.mmdb')
@@ -73,6 +71,9 @@ class ReadLogCog(commands.Cog):
     @tasks.loop(seconds=1)
     async def check_log(self):
         try:
+            if not os.path.exists(self.log_file):
+                self.last_position = 0  # Reset position if file doesn't exist
+                return
             with open(self.log_file, "r") as file:
                 file.seek(self.last_position)
                 new_lines = file.readlines()
@@ -89,7 +90,6 @@ class ReadLogCog(commands.Cog):
                                 logger.error(f"Error processing log line: {line}, Error: {str(e)}")
                                 logger.error(traceback.format_exc())
 
-                        # Remove IP addresses that have timed out
                         current_time = time.time()
                         for ip_address, timestamp in list(self.ip_timestamps.items()):
                             if current_time - timestamp > TIMEOUT_SECONDS:
@@ -98,12 +98,18 @@ class ReadLogCog(commands.Cog):
                                     del self.ip_to_username[ip_address]
                                 if ip_address in self.ip_timestamps:
                                     del self.ip_timestamps[ip_address]
-
         except FileNotFoundError:
-            pass
+            await self.handle_file_error()
         except Exception as e:
             logger.error(f"Error checking log file: {str(e)}")
             logger.error(traceback.format_exc())
+
+    async def handle_file_error(self):
+        channel_id = self.bot.config['discord']['channel_id']
+        channel = self.bot.get_channel(int(channel_id))
+        if channel:
+            await channel.send("Log file not found. Please check the server.")
+        self.last_position = 0
 
     async def process_log_line(self, line, channel):
         ip_match = re.search(IP_PATTERN, line)
@@ -133,7 +139,7 @@ class ReadLogCog(commands.Cog):
                 logger.debug(f"Join Event - Username: {username}, IP Address: {ip_address}, Location: {country}, {state}")
                 message = f"**{username}** has joined the game from **{state}, {country}**."
                 await channel.send(message)
-                del self.ip_timestamps[ip_address]  # Remove the timestamp since the user has joined
+                del self.ip_timestamps[ip_address]
             else:
                 logger.debug(f"Join Event - Username: {username}, IP Address: Not Found")
                 message = f"**{username}** has joined the game."
@@ -144,11 +150,10 @@ class ReadLogCog(commands.Cog):
         leave_match = re.search(LEAVE_PATTERN, line)
         death_match = re.search(DEATH_PATTERN, line)
 
-        # Check for GPS tags
         gps_match = re.search(GPS_PATTERN, line)
         if gps_match:
             logger.debug(f"Skipping message containing GPS tag: {line.strip()}")
-            return  # Skip this line and don't send it to Discord
+            return
 
         if research_match:
             message = f"**Research Completed:** {research_match.group(1)}"
