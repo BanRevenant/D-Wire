@@ -22,7 +22,7 @@ DEATH_PATTERN = r"\[MSG\] (\w+) was killed by (.+) at \[gps"
 CONNECTION_REFUSED_PATTERN = r"Refusing connection for address \(IP ADDR:\((\{[0-9.]+:[0-9]+\})\)\), username \((.+)\). UserVerificationMissing"
 GPS_PATTERN = r"\[gps=[-+]?\d*\.\d+,[-+]?\d*\.\d+\]" 
 
-TIMEOUT_SECONDS = 30
+TIMEOUT_SECONDS = 60
 
 def load_geo_database():
     database_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'GeoLite2-City.mmdb')
