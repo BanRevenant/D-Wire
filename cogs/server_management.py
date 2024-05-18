@@ -6,6 +6,8 @@ import subprocess
 import psutil
 import os
 import sys
+import datetime
+import asyncio
 
 with open('config.json') as config_file:
     config = json.load(config_file)
@@ -59,6 +61,18 @@ class ServerManagementCog(commands.Cog):
         except psutil.NoSuchProcess:
             return False
 
+    def rename_verbose_log_file(self):
+        if os.path.exists(VERBOSE_LOG_FILE):
+            try:
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                log_dir = os.path.dirname(VERBOSE_LOG_FILE)
+                log_filename = os.path.basename(VERBOSE_LOG_FILE)
+                renamed_log_file = os.path.join(log_dir, f"previous_{timestamp}_{log_filename}")
+                os.rename(VERBOSE_LOG_FILE, renamed_log_file)
+                print(f"Renamed {VERBOSE_LOG_FILE} to {renamed_log_file}")
+            except Exception as e:
+                print(f"Failed to rename verbose log file: {str(e)}")
+
     @commands.Cog.listener()
     async def on_ready(self):
         await self.update_bot_status()
@@ -79,6 +93,8 @@ class ServerManagementCog(commands.Cog):
         else:
             await interaction.response.defer()  # Defer the response
             try:
+                self.rename_verbose_log_file()
+
                 command = [
                     FACTORIO_EXE,
                     '--port', str(port),
@@ -123,6 +139,16 @@ class ServerManagementCog(commands.Cog):
                 self.server_command = None
                 os.remove(SERVER_INFO_FILE)
                 await interaction.followup.send("Server stopped successfully.")
+
+                # Wait for 5 seconds before running killall
+                await asyncio.sleep(5)
+
+                # Run killall command to ensure all server processes are terminated
+                if sys.platform == 'win32':
+                    subprocess.call(['taskkill', '/F', '/IM', 'factorio.exe'])
+                else:
+                    subprocess.call(['killall', '-9', 'factorio'])
+
                 await self.update_bot_status()
             except Exception as e:
                 await interaction.followup.send(f"Failed to stop server: {str(e)}")
@@ -148,6 +174,8 @@ class ServerManagementCog(commands.Cog):
                 # Wait for the process to terminate
                 while process.is_running():
                     continue
+
+            self.rename_verbose_log_file()
 
             # Start a new server process
             command = [
