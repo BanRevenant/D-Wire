@@ -1,15 +1,9 @@
 # D-Wire Factorio Server Manager Discord Bot
 
-### Development hiatus until 5/22 ( Replacing computer parts that failed )
+### Updated and ready for Space Age DLC!
 
 ### A tool for managing a Factorio server without the need of any other software or tools.
 This discord bot enables the ability to manage your factorio server directly from your discord channel of choice while giving some many other desired features. The only thing required during the setup process is a discord token. Everything else is processed in discord.
-
-# Quick Start
-### Download the script
-curl -O https://raw.githubusercontent.com/BanRevenant/D-Wire/master/deploy_bot.sh
-### Make the script executable and run it
-chmod +x deploy_bot.sh && ./deploy_bot.sh
 
 ### Invite the bot to your discord.
 https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&scope=bot 
@@ -40,11 +34,9 @@ https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&sc
 
 ## Known Issues and improvements.
 * Registration code expiration is currently handled inappropriately.
-* A proper log reader for all cogs that depend on one.
 * Better way to handle file uploads that are larger than 8mb.
 * Save game creator.
 * Not all of the FW Softcode is created yet.
-* Better automated setup using the Discord bot itself for first run.
 * If a cog itself has a traceback that prevents its operation its not output by the bot error handler.
 
 ## Development
