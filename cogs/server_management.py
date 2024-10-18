@@ -8,19 +8,11 @@ import os
 import sys
 import datetime
 import asyncio
+from logger import setup_logger
+from config_manager import ConfigManager
 
-with open('config.json') as config_file:
-    config = json.load(config_file)
+logger = setup_logger(__name__, 'logs/server_management.log')
 
-# Factorio server configuration
-FACTORIO_EXE = config['factorio_server']['executable']
-DEFAULT_PORT = config['factorio_server']['default_port']
-DEFAULT_BIND_ADDRESS = config['factorio_server']['default_bind_address']
-DEFAULT_RCON_PORT = config['factorio_server']['default_rcon_port']
-DEFAULT_RCON_PASSWORD = config['factorio_server']['default_rcon_password']
-DEFAULT_SERVER_SETTINGS = config['factorio_server']['server_settings_file']
-DEFAULT_SERVER_ADMINLIST = config['factorio_server']['server_adminlist_file']
-VERBOSE_LOG_FILE = config['factorio_server']['verbose_log_file']
 SERVER_INFO_FILE = 'server_info.txt'
 
 def setsid():
@@ -36,21 +28,31 @@ def setsid():
 class ServerManagementCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.config_manager = bot.config_manager
         self.server_process = None
         self.server_command = None
         self.server_pid = None
         self.load_server_info()
+        logger.info("ServerManagementCog initialized")
 
     def load_server_info(self):
         if os.path.exists(SERVER_INFO_FILE):
-            with open(SERVER_INFO_FILE, 'r') as file:
-                self.server_command = file.readline().strip()
-                self.server_pid = int(file.readline().strip())
+            try:
+                with open(SERVER_INFO_FILE, 'r') as file:
+                    self.server_command = file.readline().strip()
+                    self.server_pid = int(file.readline().strip())
+                logger.info(f"Loaded server info: PID {self.server_pid}")
+            except Exception as e:
+                logger.error(f"Error loading server info: {str(e)}")
 
     def save_server_info(self, command, pid):
-        with open(SERVER_INFO_FILE, 'w') as file:
-            file.write(command + '\n')
-            file.write(str(pid) + '\n')
+        try:
+            with open(SERVER_INFO_FILE, 'w') as file:
+                file.write(command + '\n')
+                file.write(str(pid) + '\n')
+            logger.info(f"Saved server info: PID {pid}")
+        except Exception as e:
+            logger.error(f"Error saving server info: {str(e)}")
 
     def is_server_running(self):
         if self.server_pid is None:
@@ -59,109 +61,127 @@ class ServerManagementCog(commands.Cog):
             process = psutil.Process(self.server_pid)
             return process.is_running()
         except psutil.NoSuchProcess:
+            logger.warning(f"No process found with PID {self.server_pid}")
             return False
 
     def rename_verbose_log_file(self):
-        if os.path.exists(VERBOSE_LOG_FILE):
+        verbose_log_file = self.config_manager.get('factorio_server.verbose_log_file')
+        if os.path.exists(verbose_log_file):
             try:
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                log_dir = os.path.dirname(VERBOSE_LOG_FILE)
-                log_filename = os.path.basename(VERBOSE_LOG_FILE)
+                log_dir = os.path.dirname(verbose_log_file)
+                log_filename = os.path.basename(verbose_log_file)
                 renamed_log_file = os.path.join(log_dir, f"previous_{timestamp}_{log_filename}")
-                os.rename(VERBOSE_LOG_FILE, renamed_log_file)
-                print(f"Renamed {VERBOSE_LOG_FILE} to {renamed_log_file}")
+                os.rename(verbose_log_file, renamed_log_file)
+                logger.info(f"Renamed {verbose_log_file} to {renamed_log_file}")
             except Exception as e:
-                print(f"Failed to rename verbose log file: {str(e)}")
+                logger.error(f"Failed to rename verbose log file: {str(e)}")
 
     @commands.Cog.listener()
     async def on_ready(self):
         await self.update_bot_status()
+        logger.info("ServerManagementCog is ready")
 
     async def update_bot_status(self):
         if self.is_server_running():
             await self.bot.change_presence(status=discord.Status.do_not_disturb, activity=discord.Game(name="Factorio."))
+            logger.info("Bot status updated: Server running")
         else:
             await self.bot.change_presence(status=discord.Status.idle, activity=discord.Game(name="Nothing."))
+            logger.info("Bot status updated: Server not running")
 
     @app_commands.command(name='startserver', description='Start the Factorio server with optional configuration')
     @app_commands.describe(port='Port number for the server (default: config value)')
     @app_commands.describe(save_file='Specific save file to load (default: latest save)')
-    async def startserver(self, interaction: discord.Interaction, port: int = DEFAULT_PORT, save_file: str = None):
-        """Command to start the Factorio server with optional configuration."""
+    async def startserver(self, interaction: discord.Interaction, port: int = None, save_file: str = None):
         if self.is_server_running():
             await interaction.response.send_message("The server is already running.")
-        else:
-            await interaction.response.defer()  # Defer the response
+            logger.warning("Attempted to start server when it's already running")
+            return
+
+        await interaction.response.defer(thinking=True)  # Send the initial defer with thinking animation
+        try:
+            self.rename_verbose_log_file()
+
+            # Server setup details
+            factorio_exe = self.config_manager.get('factorio_server.executable')
+            default_port = self.config_manager.get('factorio_server.default_port')
+            bind_address = self.config_manager.get('factorio_server.default_bind_address')
+            rcon_port = self.config_manager.get('factorio_server.default_rcon_port')
+            rcon_password = self.config_manager.get('factorio_server.default_rcon_password')
+            server_settings = self.config_manager.get('factorio_server.server_settings_file')
+            server_adminlist = self.config_manager.get('factorio_server.server_adminlist_file')
+            verbose_log_file = self.config_manager.get('factorio_server.verbose_log_file')
+
+            command = [
+                factorio_exe,
+                '--port', str(port or default_port),
+                '--bind', bind_address,
+                '--rcon-port', str(rcon_port),
+                '--rcon-password', rcon_password,
+                '--server-settings', server_settings,
+                '--server-adminlist', server_adminlist
+            ]
+            if save_file:
+                command.extend(['--start-server', save_file])
+            else:
+                command.append('--start-server-load-latest')
+
+            verbose_log_file = open(verbose_log_file, 'w')
+            self.server_process = subprocess.Popen(command, stdout=verbose_log_file, stderr=subprocess.STDOUT, start_new_session=True)
+            self.server_pid = self.server_process.pid
+            self.server_command = ' '.join(command)
+            self.save_server_info(self.server_command, self.server_pid)
+
             try:
-                self.rename_verbose_log_file()
+                setsid()
+            except PermissionError:
+                logger.warning("PermissionError when trying to set session ID")
 
-                command = [
-                    FACTORIO_EXE,
-                    '--port', str(port),
-                    '--bind', DEFAULT_BIND_ADDRESS,
-                    '--rcon-port', str(DEFAULT_RCON_PORT),
-                    '--rcon-password', DEFAULT_RCON_PASSWORD,
-                    '--server-settings', DEFAULT_SERVER_SETTINGS,
-                    '--server-adminlist', DEFAULT_SERVER_ADMINLIST
-                ]
-                if save_file:
-                    command.extend(['--start-server', save_file])
-                else:
-                    command.append('--start-server-load-latest')
-
-                verbose_log_file = open(VERBOSE_LOG_FILE, 'w')
-                self.server_process = subprocess.Popen(command, stdout=verbose_log_file, stderr=subprocess.STDOUT, start_new_session=True)
-                self.server_pid = self.server_process.pid
-                self.server_command = ' '.join(command)
-                self.save_server_info(self.server_command, self.server_pid)
-                try:
-                    setsid()
-                except PermissionError:
-                    pass  # Ignore the permission error and continue
-                await interaction.followup.send("Server started successfully.")
-                await self.update_bot_status()
-            except Exception as e:
-                await interaction.followup.send(f"Failed to start server: {str(e)}")
+            await interaction.followup.send("Server started successfully.")  # Use followup for the response after defer
+            await self.update_bot_status()
+            logger.info(f"Server started with PID {self.server_pid}")
+        except Exception as e:
+            await interaction.followup.send(f"Failed to start server: {str(e)}")
+            logger.error(f"Failed to start server: {str(e)}")
 
     @app_commands.command(name='stopserver', description='Stop the Factorio server')
     async def stopserver(self, interaction: discord.Interaction):
-        """Command to stop the Factorio server."""
         if not self.is_server_running():
             await interaction.response.send_message("The server is already stopped.")
-        else:
-            await interaction.response.defer()  # Defer the response
-            try:
-                process = psutil.Process(self.server_pid)
-                for proc in process.children(recursive=True):
-                    proc.kill()
-                process.kill()
-                self.server_pid = None
-                self.server_command = None
-                os.remove(SERVER_INFO_FILE)
-                await interaction.followup.send("Server stopped successfully.")
+            logger.warning("Attempted to stop server when it's not running")
+            return
 
-                # Wait for 5 seconds before running killall
-                await asyncio.sleep(5)
+        await interaction.response.defer()
+        try:
+            process = psutil.Process(self.server_pid)
+            for proc in process.children(recursive=True):
+                proc.kill()
+            process.kill()
+            self.server_pid = None
+            self.server_command = None
+            os.remove(SERVER_INFO_FILE)
+            await interaction.followup.send("Server stopped successfully.")
+            logger.info("Server stopped successfully")
 
-                # Run killall command to ensure all server processes are terminated
-                if sys.platform == 'win32':
-                    subprocess.call(['taskkill', '/F', '/IM', 'factorio.exe'])
-                else:
-                    subprocess.call(['killall', '-9', 'factorio'])
+            await asyncio.sleep(5)
 
-                await self.update_bot_status()
-            except Exception as e:
-                await interaction.followup.send(f"Failed to stop server: {str(e)}")
+            if sys.platform == 'win32':
+                subprocess.call(['taskkill', '/F', '/IM', 'factorio.exe'])
+            else:
+                subprocess.call(['killall', '-9', 'factorio'])
+
+            await self.update_bot_status()
+        except Exception as e:
+            await interaction.followup.send(f"Failed to stop server: {str(e)}")
+            logger.error(f"Failed to stop server: {str(e)}")
 
     @app_commands.command(name='restart', description='Restart the Factorio server')
     async def restart(self, interaction: discord.Interaction):
-        """Command to restart the Factorio server."""
-        await interaction.response.defer()  # Defer the response
+        await interaction.response.defer()
         try:
-            # Load server information from the file
             self.load_server_info()
 
-            # Terminate the running server process if it exists
             if self.server_pid:
                 process = psutil.Process(self.server_pid)
                 for proc in process.children(recursive=True):
@@ -171,38 +191,49 @@ class ServerManagementCog(commands.Cog):
                 self.server_command = None
                 os.remove(SERVER_INFO_FILE)
 
-                # Wait for the process to terminate
                 while process.is_running():
-                    continue
+                    await asyncio.sleep(1)
 
             self.rename_verbose_log_file()
 
-            # Start a new server process
+            factorio_exe = self.config_manager.get('factorio_server.executable')
+            default_port = self.config_manager.get('factorio_server.default_port')
+            bind_address = self.config_manager.get('factorio_server.default_bind_address')
+            rcon_port = self.config_manager.get('factorio_server.default_rcon_port')
+            rcon_password = self.config_manager.get('factorio_server.default_rcon_password')
+            server_settings = self.config_manager.get('factorio_server.server_settings_file')
+            server_adminlist = self.config_manager.get('factorio_server.server_adminlist_file')
+            verbose_log_file = self.config_manager.get('factorio_server.verbose_log_file')
+
             command = [
-                FACTORIO_EXE,
-                '--port', str(DEFAULT_PORT),
-                '--bind', DEFAULT_BIND_ADDRESS,
-                '--rcon-port', str(DEFAULT_RCON_PORT),
-                '--rcon-password', DEFAULT_RCON_PASSWORD,
-                '--server-settings', DEFAULT_SERVER_SETTINGS,
-                '--server-adminlist', DEFAULT_SERVER_ADMINLIST,
+                factorio_exe,
+                '--port', str(default_port),
+                '--bind', bind_address,
+                '--rcon-port', str(rcon_port),
+                '--rcon-password', rcon_password,
+                '--server-settings', server_settings,
+                '--server-adminlist', server_adminlist,
                 '--start-server-load-latest'
             ]
 
-            verbose_log_file = open(VERBOSE_LOG_FILE, 'w')
+            verbose_log_file = open(verbose_log_file, 'w')
             self.server_process = subprocess.Popen(command, stdout=verbose_log_file, stderr=subprocess.STDOUT, start_new_session=True)
             self.server_pid = self.server_process.pid
             self.server_command = ' '.join(command)
             self.save_server_info(self.server_command, self.server_pid)
+
             try:
                 setsid()
             except PermissionError:
-                pass  # Ignore the permission error and continue
+                logger.warning("PermissionError when trying to set session ID")
+
             await interaction.followup.send("Server restarted successfully.")
             await self.update_bot_status()
+            logger.info(f"Server restarted with PID {self.server_pid}")
         except Exception as e:
             await interaction.followup.send(f"Failed to restart server: {str(e)}")
+            logger.error(f"Failed to restart server: {str(e)}")
 
 async def setup(bot):
-    cog = ServerManagementCog(bot)
-    await bot.add_cog(cog)
+    await bot.add_cog(ServerManagementCog(bot))
+    logger.info("ServerManagementCog added to bot")

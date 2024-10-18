@@ -2,6 +2,10 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import json
+from logger import setup_logger
+from config_manager import ConfigManager
+
+logger = setup_logger(__name__, 'logs/settings.log')
 
 class SettingsDropdown(discord.ui.Select):
     def __init__(self):
@@ -15,10 +19,15 @@ class SettingsDropdown(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         selected_category = self.values[0]
-        settings_file = interaction.client.config['factorio_server']['server_settings_file']
+        settings_file = interaction.client.config_manager.get('factorio_server.server_settings_file')
 
-        with open(settings_file, 'r') as f:
-            settings = json.load(f)
+        try:
+            with open(settings_file, 'r') as f:
+                settings = json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading settings file: {str(e)}")
+            await interaction.response.send_message("An error occurred while reading the settings file.", ephemeral=True)
+            return
 
         if selected_category == "Server Presence":
             modal = ServerPresenceModal(settings)
@@ -30,6 +39,7 @@ class SettingsDropdown(discord.ui.Select):
             modal = MasterSettingsModal(settings)
 
         await interaction.response.send_modal(modal)
+        logger.info(f"User {interaction.user.name} selected {selected_category} settings")
 
 class ServerPresenceModal(discord.ui.Modal):
     def __init__(self, settings):
@@ -81,14 +91,19 @@ class ServerPresenceModal(discord.ui.Modal):
                 try:
                     updated_settings[child.label] = int(child.value)
                 except ValueError:
+                    logger.warning(f"Invalid value for max_players: {child.value}")
                     pass
             else:
                 updated_settings[child.label] = child.value
 
-        with open(interaction.client.config['factorio_server']['server_settings_file'], 'w') as f:
-            json.dump(updated_settings, f, indent=2)
-
-        await interaction.response.edit_message(content="Server presence settings updated successfully.")
+        try:
+            with open(interaction.client.config_manager.get('factorio_server.server_settings_file'), 'w') as f:
+                json.dump(updated_settings, f, indent=2)
+            await interaction.response.send_message("Server presence settings updated successfully.")
+            logger.info(f"User {interaction.user.name} updated server presence settings")
+        except Exception as e:
+            logger.error(f"Error updating server presence settings: {str(e)}")
+            await interaction.response.send_message("An error occurred while updating the settings.", ephemeral=True)
 
 class SaveSettingsModal(discord.ui.Modal):
     def __init__(self, settings):
@@ -140,12 +155,17 @@ class SaveSettingsModal(discord.ui.Modal):
                 try:
                     updated_settings[child.label] = int(child.value)
                 except ValueError:
+                    logger.warning(f"Invalid value for {child.label}: {child.value}")
                     pass
 
-        with open(interaction.client.config['factorio_server']['server_settings_file'], 'w') as f:
-            json.dump(updated_settings, f, indent=2)
-
-        await interaction.response.edit_message(content="Save settings updated successfully.")
+        try:
+            with open(interaction.client.config_manager.get('factorio_server.server_settings_file'), 'w') as f:
+                json.dump(updated_settings, f, indent=2)
+            await interaction.response.send_message("Save settings updated successfully.")
+            logger.info(f"User {interaction.user.name} updated save settings")
+        except Exception as e:
+            logger.error(f"Error updating save settings: {str(e)}")
+            await interaction.response.send_message("An error occurred while updating the settings.", ephemeral=True)
 
 class NetworkingSettingsModal(discord.ui.Modal):
     def __init__(self, settings):
@@ -194,12 +214,17 @@ class NetworkingSettingsModal(discord.ui.Modal):
             try:
                 updated_settings[child.label] = int(child.value)
             except ValueError:
+                logger.warning(f"Invalid value for {child.label}: {child.value}")
                 pass
 
-        with open(interaction.client.config['factorio_server']['server_settings_file'], 'w') as f:
-            json.dump(updated_settings, f, indent=2)
-
-        await interaction.response.edit_message(content="Networking settings updated successfully.")
+        try:
+            with open(interaction.client.config_manager.get('factorio_server.server_settings_file'), 'w') as f:
+                json.dump(updated_settings, f, indent=2)
+            await interaction.response.send_message("Networking settings updated successfully.")
+            logger.info(f"User {interaction.user.name} updated networking settings")
+        except Exception as e:
+            logger.error(f"Error updating networking settings: {str(e)}")
+            await interaction.response.send_message("An error occurred while updating the settings.", ephemeral=True)
 
 class MasterSettingsModal(discord.ui.Modal):
     def __init__(self, settings):
@@ -254,14 +279,19 @@ class MasterSettingsModal(discord.ui.Modal):
             else:
                 updated_settings[child.label] = child.value
 
-        with open(interaction.client.config['factorio_server']['server_settings_file'], 'w') as f:
-            json.dump(updated_settings, f, indent=2)
-
-        await interaction.response.edit_message(content="Master settings updated successfully.")
+        try:
+            with open(interaction.client.config_manager.get('factorio_server.server_settings_file'), 'w') as f:
+                json.dump(updated_settings, f, indent=2)
+            await interaction.response.send_message("Master settings updated successfully.")
+            logger.info(f"User {interaction.user.name} updated master settings")
+        except Exception as e:
+            logger.error(f"Error updating master settings: {str(e)}")
+            await interaction.response.send_message("An error occurred while updating the settings.", ephemeral=True)
 
 class SettingsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        logger.info("SettingsCog initialized")
 
     @app_commands.command(name='settings', description='Modify Factorio server settings.')
     async def settings(self, interaction: discord.Interaction):
@@ -269,6 +299,8 @@ class SettingsCog(commands.Cog):
         view.add_item(SettingsDropdown())
 
         await interaction.response.send_message("Select a settings category:", view=view)
+        logger.info(f"User {interaction.user.name} accessed settings menu")
 
 async def setup(bot):
     await bot.add_cog(SettingsCog(bot))
+    logger.info("SettingsCog added to bot")

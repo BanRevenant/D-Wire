@@ -5,15 +5,11 @@ from discord.ext import commands, tasks
 import geoip2.database
 import logging
 import traceback
-import time  # Import the time module
+import time
+from logger import setup_logger
+from config_manager import ConfigManager
 
-# Set up logging for your own code
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Set a higher logging level for the discord library
-discord_logger = logging.getLogger('discord')
-discord_logger.setLevel(logging.WARNING)
+logger = setup_logger(__name__, 'logs/readlog.log')
 
 IP_PATTERN = r"from\(IP ADDR:\((\{[0-9.]+:[0-9]+\})\)\)"
 JOIN_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[JOIN\] (.+) joined the game"
@@ -22,15 +18,15 @@ CHAT_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[CHAT\] (.+): (.+)"
 LEAVE_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[LEAVE\] (.+) left the game"
 DEATH_PATTERN = r"\[MSG\] (\w+) was killed by (.+) at \[gps"
 CONNECTION_REFUSED_PATTERN = r"Refusing connection for address \(IP ADDR:\((\{[0-9.]+:[0-9]+\})\)\), username \((.+)\). UserVerificationMissing"
-GPS_PATTERN = r"\[gps=[-+]?\d*\.\d+,[-+]?\d*\.\d+\]"  # Pattern to match GPS tags
+GPS_PATTERN = r"\[gps=[-+]?\d*\.\d+,[-+]?\d*\.\d+\]"
 
-TIMEOUT_SECONDS = 30  # Time after which an unjoined user's IP address will be removed from the cache
+TIMEOUT_SECONDS = 30
 
-def load_geo_database():
-    database_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'GeoLite2-City.mmdb')
+def load_geo_database(config_manager):
+    database_path = config_manager.get('geo_database_path', 'GeoLite2-City.mmdb')
     try:
         reader = geoip2.database.Reader(database_path)
-        logger.debug(f"GeoLite2 City database loaded successfully from {database_path}")
+        logger.info(f"GeoLite2 City database loaded successfully from {database_path}")
         return reader
     except Exception as e:
         logger.error(f"Error loading GeoLite2 City database from {database_path}, Error: {str(e)}")
@@ -52,14 +48,17 @@ def get_location_from_ip(ip_address, reader):
 class ReadLogCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.log_file = bot.config['factorio_server']['server_log_file']
+        self.config_manager = bot.config_manager
+        self.log_file = self.config_manager.get('factorio_server.server_log_file')
         self.last_position = self.get_last_position()
-        self.geo_reader = load_geo_database()
+        self.geo_reader = load_geo_database(self.config_manager)
         self.ip_to_username = {}
         self.ip_timestamps = {}
+        logger.info("ReadLogCog initialized")
 
     def cog_unload(self):
         self.check_log.cancel()
+        logger.info("ReadLogCog unloaded")
 
     def get_last_position(self):
         try:
@@ -68,6 +67,7 @@ class ReadLogCog(commands.Cog):
                 last_position = file.tell()
                 return last_position
         except FileNotFoundError:
+            logger.error(f"Log file not found: {self.log_file}")
             return 0
 
     @tasks.loop(seconds=1)
@@ -79,7 +79,7 @@ class ReadLogCog(commands.Cog):
                 self.last_position = file.tell()
 
                 if new_lines:
-                    channel_id = self.bot.config['discord']['channel_id']
+                    channel_id = self.config_manager.get('discord.channel_id')
                     channel = self.bot.get_channel(int(channel_id))
                     if channel:
                         for line in new_lines:
@@ -89,7 +89,6 @@ class ReadLogCog(commands.Cog):
                                 logger.error(f"Error processing log line: {line}, Error: {str(e)}")
                                 logger.error(traceback.format_exc())
 
-                        # Remove IP addresses that have timed out
                         current_time = time.time()
                         for ip_address, timestamp in list(self.ip_timestamps.items()):
                             if current_time - timestamp > TIMEOUT_SECONDS:
@@ -100,7 +99,7 @@ class ReadLogCog(commands.Cog):
                                     del self.ip_timestamps[ip_address]
 
         except FileNotFoundError:
-            pass
+            logger.error(f"Log file not found: {self.log_file}")
         except Exception as e:
             logger.error(f"Error checking log file: {str(e)}")
             logger.error(traceback.format_exc())
@@ -130,12 +129,12 @@ class ReadLogCog(commands.Cog):
             if ip_address:
                 self.ip_to_username[ip_address] = (username, self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2])
                 country, state = self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2]
-                logger.debug(f"Join Event - Username: {username}, IP Address: {ip_address}, Location: {country}, {state}")
+                logger.info(f"Join Event - Username: {username}, IP Address: {ip_address}, Location: {country}, {state}")
                 message = f"**{username}** has joined the game from **{state}, {country}**."
                 await channel.send(message)
-                del self.ip_timestamps[ip_address]  # Remove the timestamp since the user has joined
+                del self.ip_timestamps[ip_address]
             else:
-                logger.debug(f"Join Event - Username: {username}, IP Address: Not Found")
+                logger.info(f"Join Event - Username: {username}, IP Address: Not Found")
                 message = f"**{username}** has joined the game."
                 await channel.send(message)
 
@@ -144,28 +143,33 @@ class ReadLogCog(commands.Cog):
         leave_match = re.search(LEAVE_PATTERN, line)
         death_match = re.search(DEATH_PATTERN, line)
 
-        # Check for GPS tags
         gps_match = re.search(GPS_PATTERN, line)
         if gps_match:
             logger.debug(f"Skipping message containing GPS tag: {line.strip()}")
-            return  # Skip this line and don't send it to Discord
+            return
 
         if research_match:
             message = f"**Research Completed:** {research_match.group(1)}"
             await channel.send(message)
+            logger.info(f"Research Completed: {research_match.group(1)}")
         elif chat_match:
             message = f"**{chat_match.group(2)}** says: {chat_match.group(3)}"
             await channel.send(message)
+            logger.info(f"Chat Message - {chat_match.group(2)}: {chat_match.group(3)}")
         elif leave_match:
             message = f"**{leave_match.group(2)}** left the game."
             await channel.send(message)
+            logger.info(f"Leave Event - Username: {leave_match.group(2)}")
         elif death_match:
             message = f"**{death_match.group(1)}** was killed by {death_match.group(2)}"
             await channel.send(message)
+            logger.info(f"Death Event - {death_match.group(1)} killed by {death_match.group(2)}")
 
     @commands.Cog.listener()
     async def on_ready(self):
         self.check_log.start()
+        logger.info("ReadLogCog is ready and log checking has started")
 
 async def setup(bot):
     await bot.add_cog(ReadLogCog(bot))
+    logger.info("ReadLogCog added to bot")

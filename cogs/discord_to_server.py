@@ -3,24 +3,30 @@ from discord.ext import commands
 from factorio_rcon import RCONClient
 import json
 import asyncio
+from logger import setup_logger
+from config_manager import ConfigManager
+
+logger = setup_logger(__name__, 'logs/discord_to_server.log')
 
 class DiscordToServerCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.config_manager = bot.config_manager
         self.rcon_client = None
-        self.rcon_host = self.bot.config['factorio_server']['rcon_host']
-        self.rcon_port = self.bot.config['factorio_server']['default_rcon_port']
-        self.rcon_password = self.bot.config['factorio_server']['default_rcon_password']
-        self.channel_id = self.bot.config['discord']['channel_id']
+        self.rcon_host = self.config_manager.get('factorio_server.rcon_host')
+        self.rcon_port = self.config_manager.get('factorio_server.default_rcon_port')
+        self.rcon_password = self.config_manager.get('factorio_server.default_rcon_password')
+        self.channel_id = self.config_manager.get('discord.channel_id')
+        logger.info("DiscordToServerCog initialized")
 
     async def connect_rcon(self):
         try:
             self.rcon_client = RCONClient(self.rcon_host, self.rcon_port, self.rcon_password)
             await self.bot.loop.run_in_executor(None, self.rcon_client.connect)
-            print("RCON client connected successfully.")
+            logger.info("RCON client connected successfully.")
             return True
         except Exception as e:
-            print(f"Error connecting to RCON: {str(e)}")
+            logger.error(f"Error connecting to RCON: {str(e)}")
             self.rcon_client = None
             return False
 
@@ -28,15 +34,15 @@ class DiscordToServerCog(commands.Cog):
         if self.rcon_client:
             try:
                 await self.bot.loop.run_in_executor(None, self.rcon_client.close)
-                print("RCON client disconnected.")
+                logger.info("RCON client disconnected.")
             except Exception as e:
-                print(f"Error disconnecting RCON: {str(e)}")
+                logger.error(f"Error disconnecting RCON: {str(e)}")
             finally:
                 self.rcon_client = None
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print(f"DiscordToServerCog is ready.")
+        logger.info(f"DiscordToServerCog is ready.")
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -57,19 +63,22 @@ class DiscordToServerCog(commands.Cog):
         try:
             rcon_command = f"/cchat {message.author.display_name}: {message.content}"
             response = await self.bot.loop.run_in_executor(None, self.rcon_client.send_command, rcon_command)
-            print(f"RCON command sent: {rcon_command}")
-            print(f"RCON response: {response}")
+            logger.info(f"RCON command sent: {rcon_command}")
+            logger.info(f"RCON response: {response}")
         except Exception as e:
-            print(f"Error sending RCON command: {str(e)}")
+            logger.error(f"Error sending RCON command: {str(e)}")
             await self.disconnect_rcon()
             await message.channel.send("An error occurred while sending the message to the server. Please try again later.")
 
     @commands.command()
     async def ping(self, ctx):
         await ctx.send("Pong!")
+        logger.info(f"Ping command executed by {ctx.author}")
 
     async def cog_unload(self):
         await self.disconnect_rcon()
+        logger.info("DiscordToServerCog unloaded")
 
 async def setup(bot):
     await bot.add_cog(DiscordToServerCog(bot))
+    logger.info("DiscordToServerCog added to bot")
