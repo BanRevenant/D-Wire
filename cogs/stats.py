@@ -4,18 +4,12 @@ from discord.ext import commands
 from discord import app_commands
 import sqlite3
 import re
-import shutil
 import asyncio
 import json
+import traceback
 from logger import setup_logger
-from config_manager import ConfigManager
 
 logger = setup_logger(__name__, 'logs/stats.log')
-
-STATS_PATTERN = r"\[STATS-E1\] \[([^]]+)\] ([^[]+) \[([^]]+)\] with \[([^]]+)\]"
-DEATH_PATTERN = r"\[STATS-D2\] \[([^]]+)\] killed by \[([^]]+)\] force \[enemy\]"
-PLACE_PATTERN = r"\[ACT\] ([^[\]]+) placed"
-STATSME_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[CHAT\] (.+): statsme"
 
 class StatsCog(commands.Cog):
     def __init__(self, bot):
@@ -26,43 +20,69 @@ class StatsCog(commands.Cog):
         self.registrations_file = os.path.join(self.parent_dir, "registrations.json")
         self.create_database()
         self.create_registrations_file()
-        self.reader_cog = self.bot.get_cog('ReaderCog')
-        if self.reader_cog:
-            self.reader_cog.subscribe("STATS-E1", self.process_stats)
-            self.reader_cog.subscribe("STATS-D2", self.process_deaths)
-            self.reader_cog.subscribe("ACT", self.process_placed)
-            self.reader_cog.subscribe("CHAT", self.process_statsme)
-        else:
-            logger.error("ReaderCog not found. Stats tracking will not work.")
+        self.readlog_cog = None
+        self.stats_patterns = {
+            'stats_kill': r"\[STATS-E1\] \[([^]]+)\] ([^[]+) \[([^]]+)\] with \[([^]]+)\]",
+            'stats_death': r"\[STATS-D2\] \[([^]]+)\] killed by \[([^]]+)\] force \[enemy\]",
+            'stats_place': r"\[ACT\] ([^[\]]+) placed",
+            'statsme': r"\[CHAT\] (.+): !statsme"  # Simplified pattern to catch statsme commands
+        }
         logger.info("StatsCog initialized")
 
-    def cog_unload(self):
-        if self.reader_cog:
-            self.reader_cog.unsubscribe("STATS-E1", self.process_stats)
-            self.reader_cog.unsubscribe("STATS-D2", self.process_deaths)
-            self.reader_cog.unsubscribe("ACT", self.process_placed)
-            self.reader_cog.unsubscribe("CHAT", self.process_statsme)
-        logger.info("StatsCog unloaded")
+    async def ensure_readlog_cog(self):
+        max_attempts = 5
+        attempt = 0
+        while attempt < max_attempts:
+            self.readlog_cog = self.bot.get_cog('ReadLogCog')
+            if self.readlog_cog:
+                logger.info("Successfully connected to ReadLogCog.")
+                return
+            attempt += 1
+            logger.warning(f"ReadLogCog not found (Attempt {attempt}/{max_attempts}). Retrying in 2 seconds...")
+            await asyncio.sleep(2)
+        
+        logger.error("Max attempts reached. Stats tracking will not work.")
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        await self.ensure_readlog_cog()
+        logger.info("StatsCog is ready.")
 
     def create_database(self):
-        db_exists = os.path.isfile(self.db_file)
-        conn = sqlite3.connect(self.db_file)
-        c = conn.cursor()
-        c.execute("""CREATE TABLE IF NOT EXISTS player_stats
-                     (player_name TEXT, action TEXT, unit TEXT, weapon TEXT, count INTEGER)""")
-        c.execute("""CREATE TABLE IF NOT EXISTS player_deaths
-                     (player_name TEXT, killed_by TEXT, count INTEGER)""")
-        c.execute("""CREATE TABLE IF NOT EXISTS player_placed
-                     (player_name TEXT, count INTEGER)""")
-        conn.commit()
-        conn.close()
-        if not db_exists:
-            logger.info(f"Created new database file: {self.db_file}")
-            channel_id = self.config_manager.get('discord.channel_id')
-            channel = self.bot.get_channel(int(channel_id))
-            if channel:
-                message = f"A new player statistics database has been created at {self.db_file}."
-                asyncio.create_task(channel.send(message))
+        try:
+            conn = sqlite3.connect(self.db_file)
+            c = conn.cursor()
+            
+            # Drop existing tables if they exist
+            c.execute("DROP TABLE IF EXISTS player_stats")
+            c.execute("DROP TABLE IF EXISTS player_deaths")
+            c.execute("DROP TABLE IF EXISTS player_placed")
+            
+            # Create tables with correct constraints
+            c.execute("""CREATE TABLE player_stats
+                        (player_name TEXT,
+                         action TEXT,
+                         unit TEXT,
+                         weapon TEXT,
+                         count INTEGER DEFAULT 1,
+                         UNIQUE(player_name, action, unit, weapon))""")
+            
+            c.execute("""CREATE TABLE player_deaths
+                        (player_name TEXT,
+                         killed_by TEXT,
+                         count INTEGER DEFAULT 1,
+                         UNIQUE(player_name, killed_by))""")
+            
+            c.execute("""CREATE TABLE player_placed
+                        (player_name TEXT UNIQUE,
+                         count INTEGER DEFAULT 1)""")
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"Database initialized at {self.db_file}")
+        except Exception as e:
+            logger.error(f"Error creating database: {str(e)}")
+            logger.error(traceback.format_exc())
 
     def create_registrations_file(self):
         if not os.path.isfile(self.registrations_file):
@@ -70,90 +90,126 @@ class StatsCog(commands.Cog):
                 json.dump({}, file)
             logger.info(f"Created new registrations file: {self.registrations_file}")
 
-    async def process_stats(self, line):
-        match = re.search(STATS_PATTERN, line)
-        if match:
-            player_name, action, unit, weapon = match.groups()
-            self.update_database(player_name, action, unit, weapon)
-            logger.debug(f"Processed stats: {player_name}, {action}, {unit}, {weapon}")
+    async def process_stats_from_line(self, line):
+        """Process a log line for statistics"""
+        try:
+            # Check for statsme command first
+            statsme_match = re.search(self.stats_patterns['statsme'], line)
+            if statsme_match:
+                player_name = statsme_match.group(1)
+                logger.info(f"Detected statsme command from player: {player_name}")
+                await self.post_player_stats(player_name)
+                return
 
-    async def process_deaths(self, line):
-        match = re.search(DEATH_PATTERN, line)
-        if match:
-            player_name, killed_by = match.groups()
-            self.update_deaths_database(player_name, killed_by)
-            logger.debug(f"Processed death: {player_name} killed by {killed_by}")
+            # Check for kills
+            kill_match = re.search(self.stats_patterns['stats_kill'], line)
+            if kill_match:
+                player_name, action, unit, weapon = kill_match.groups()
+                self.update_database(player_name, action, unit, weapon)
+                logger.debug(f"Processed kill stat: {player_name}, {action}, {unit}, {weapon}")
+                return
 
-    async def process_placed(self, line):
-        match = re.search(PLACE_PATTERN, line)
-        if match:
-            player_name = match.group(1)
-            self.update_placed_database(player_name)
-            logger.debug(f"Processed placed: {player_name}")
+            # Check for deaths
+            death_match = re.search(self.stats_patterns['stats_death'], line)
+            if death_match:
+                player_name, killed_by = death_match.groups()
+                self.update_deaths_database(player_name, killed_by)
+                logger.debug(f"Processed death stat: {player_name} killed by {killed_by}")
+                return
 
-    async def process_statsme(self, line):
-        match = re.search(STATSME_PATTERN, line)
-        if match:
-            player_name = match.group(2)
-            await self.post_player_stats(player_name)
-            logger.debug(f"Processed statsme: {player_name}")
+            # Check for placed objects
+            place_match = re.search(self.stats_patterns['stats_place'], line)
+            if place_match:
+                player_name = place_match.group(1)
+                self.update_placed_database(player_name)
+                logger.debug(f"Processed place stat: {player_name}")
+                return
+
+        except Exception as e:
+            logger.error(f"Error processing stats line: {str(e)}")
+            logger.error(traceback.format_exc())
 
     def update_database(self, player_name, action, unit, weapon):
-        conn = sqlite3.connect(self.db_file)
-        c = conn.cursor()
-        c.execute("SELECT count FROM player_stats WHERE player_name = ? AND action = ? AND unit = ? AND weapon = ?",
-                  (player_name, action, unit, weapon))
-        result = c.fetchone()
-        if result:
-            count = result[0] + 1
-            c.execute("UPDATE player_stats SET count = ? WHERE player_name = ? AND action = ? AND unit = ? AND weapon = ?",
-                      (count, player_name, action, unit, weapon))
-        else:
-            c.execute("INSERT INTO player_stats (player_name, action, unit, weapon, count) VALUES (?, ?, ?, ?, 1)",
-                      (player_name, action, unit, weapon))
-        conn.commit()
-        conn.close()
-        logger.debug(f"Updated database: {player_name}, {action}, {unit}, {weapon}")
+        try:
+            conn = sqlite3.connect(self.db_file)
+            c = conn.cursor()
+            c.execute("""INSERT INTO player_stats (player_name, action, unit, weapon)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(player_name, action, unit, weapon)
+                        DO UPDATE SET count = count + 1""",
+                     (player_name, action, unit, weapon))
+            conn.commit()
+            conn.close()
+            logger.debug(f"Updated database: {player_name}, {action}, {unit}, {weapon}")
+        except Exception as e:
+            logger.error(f"Error updating database: {str(e)}")
+            logger.error(traceback.format_exc())
 
     def update_deaths_database(self, player_name, killed_by):
-        conn = sqlite3.connect(self.db_file)
-        c = conn.cursor()
-        c.execute("SELECT count FROM player_deaths WHERE player_name = ? AND killed_by = ?", (player_name, killed_by))
-        result = c.fetchone()
-        if result:
-            count = result[0] + 1
-            c.execute("UPDATE player_deaths SET count = ? WHERE player_name = ? AND killed_by = ?", (count, player_name, killed_by))
-        else:
-            c.execute("INSERT INTO player_deaths (player_name, killed_by, count) VALUES (?, ?, 1)", (player_name, killed_by))
-        conn.commit()
-        conn.close()
-        logger.debug(f"Updated deaths database: {player_name} killed by {killed_by}")
+        try:
+            conn = sqlite3.connect(self.db_file)
+            c = conn.cursor()
+            c.execute("""INSERT INTO player_deaths (player_name, killed_by)
+                        VALUES (?, ?)
+                        ON CONFLICT(player_name, killed_by)
+                        DO UPDATE SET count = count + 1""",
+                     (player_name, killed_by))
+            conn.commit()
+            conn.close()
+            logger.debug(f"Updated deaths database: {player_name} killed by {killed_by}")
+        except Exception as e:
+            logger.error(f"Error updating deaths database: {str(e)}")
+            logger.error(traceback.format_exc())
 
     def update_placed_database(self, player_name):
-        conn = sqlite3.connect(self.db_file)
-        c = conn.cursor()
-        c.execute("SELECT count FROM player_placed WHERE player_name = ?", (player_name,))
-        result = c.fetchone()
-        if result:
-            count = result[0] + 1
-            c.execute("UPDATE player_placed SET count = ? WHERE player_name = ?", (count, player_name))
-        else:
-            c.execute("INSERT INTO player_placed (player_name, count) VALUES (?, 1)", (player_name,))
-        conn.commit()
-        conn.close()
-        logger.debug(f"Updated placed database: {player_name}")
+        try:
+            conn = sqlite3.connect(self.db_file)
+            c = conn.cursor()
+            c.execute("""INSERT INTO player_placed (player_name)
+                        VALUES (?)
+                        ON CONFLICT(player_name)
+                        DO UPDATE SET count = count + 1""",
+                     (player_name,))
+            conn.commit()
+            conn.close()
+            logger.debug(f"Updated placed database: {player_name}")
+        except Exception as e:
+            logger.error(f"Error updating placed database: {str(e)}")
+            logger.error(traceback.format_exc())
 
     @app_commands.command(name='stats', description='Get player statistics')
     async def stats(self, interaction: discord.Interaction, member: discord.Member = None):
         if member is None:
             member = interaction.user
         player_name = await self.get_player_name(member.id)
-
         await self.post_player_stats(player_name, interaction)
         logger.info(f"Stats command used for player: {player_name}")
 
     async def post_player_stats(self, player_name, interaction=None):
-        if player_name:
+        if not player_name:
+            embed = discord.Embed(color=discord.Color.red())
+            embed.add_field(
+                name="Error",
+                value="Player not found. Please make sure you have registered using the `/register` command.",
+                inline=False
+            )
+            if interaction:
+                await interaction.response.send_message(embed=embed)
+            else:
+                channel_id = self.config_manager.get('discord.channel_id')
+                channel = self.bot.get_channel(int(channel_id))
+                if channel:
+                    await channel.send(embed=embed)
+            logger.warning(f"Stats requested for unknown player")
+            return
+
+        try:
+            # Get the Discord user ID for the player
+            user_id = None
+            with open(self.registrations_file, 'r') as f:
+                registrations = json.load(f)
+                user_id = next((int(uid) for uid, name in registrations.items() if name == player_name), None)
+
             conn = sqlite3.connect(self.db_file)
             c = conn.cursor()
 
@@ -168,85 +224,141 @@ class StatsCog(commands.Cog):
 
             conn.close()
 
+            embed = discord.Embed(color=discord.Color.green())
+            
+            # Set the author with the user's avatar if available
+            if user_id:
+                user = self.bot.get_user(user_id)
+                if user and user.avatar:
+                    embed.set_author(name=f"Statistics for {player_name}", icon_url=user.avatar.url)
+                else:
+                    embed.set_author(name=f"Statistics for {player_name}")
+            else:
+                embed.set_author(name=f"Statistics for {player_name}")
+
             if stats or death_stats or placed_stats:
                 total_kills = sum(count for _, _, count in stats)
                 total_deaths = sum(count for _, count in death_stats)
                 total_placed = placed_stats[0] if placed_stats else 0
 
-                embed = discord.Embed(color=discord.Color.green())
-                embed.add_field(name=f"Statistics for {player_name}", value=f"Total Kills: {total_kills}\nTotal Deaths: {total_deaths}\nPlaced Objects: {total_placed}", inline=False)
+                embed.add_field(
+                    name="Overall Stats",
+                    value=f"Total Kills: {total_kills}\nTotal Deaths: {total_deaths}\nPlaced Objects: {total_placed}",
+                    inline=False
+                )
 
-                bug_kills_value = "\n".join([f"{unit.capitalize()}: {count}" for unit, count in sorted(self.unit_stats(stats), key=lambda x: x[1], reverse=True)])
-                embed.add_field(name="Bug Kills:", value=bug_kills_value, inline=True)
+                unit_stats = {}
+                weapon_stats = {}
+                for unit, weapon, count in stats:
+                    unit_stats[unit] = unit_stats.get(unit, 0) + count
+                    weapon_stats[weapon] = weapon_stats.get(weapon, 0) + count
 
-                weapon_kills_value = "\n".join([f"{weapon.capitalize()}: {count}" for weapon, count in sorted(self.weapon_stats(stats), key=lambda x: x[1], reverse=True)])
-                embed.add_field(name="Weapon Kills:", value=weapon_kills_value, inline=True)
+                if unit_stats:
+                    unit_text = "\n".join([f"{unit}: {count}" for unit, count in
+                        sorted(unit_stats.items(), key=lambda x: x[1], reverse=True)])
+                    embed.add_field(name="Bug Kills:", value=unit_text, inline=True)
 
-                embed.set_footer(text="Statistics provided by D-Wire")
-
-                if interaction:
-                    await interaction.response.send_message(embed=embed)
-                else:
-                    channel_id = self.config_manager.get('discord.channel_id')
-                    channel = self.bot.get_channel(int(channel_id))
-                    if channel:
-                        await channel.send(embed=embed)
-                logger.info(f"Posted stats for player: {player_name}")
+                if weapon_stats:
+                    weapon_text = "\n".join([f"{weapon}: {count}" for weapon, count in
+                        sorted(weapon_stats.items(), key=lambda x: x[1], reverse=True)])
+                    embed.add_field(name="Weapon Kills:", value=weapon_text, inline=True)
             else:
-                no_stats_embed = discord.Embed(color=discord.Color.red(), description=f"{player_name} has no recorded stats yet.")
+                embed.add_field(
+                    name="No Stats",
+                    value="No recorded stats yet.",
+                    inline=False
+                )
 
-                if interaction:
-                    await interaction.response.send_message(embed=no_stats_embed)
-                else:
-                    channel_id = self.config_manager.get('discord.channel_id')
-                    channel = self.bot.get_channel(int(channel_id))
-                    if channel:
-                        await channel.send(embed=no_stats_embed)
-                logger.info(f"No stats found for player: {player_name}")
-        else:
+            embed.set_footer(text="Statistics provided by D-Wire")
+
             if interaction:
-                await interaction.response.send_message("Player not found. Please make sure you have registered using the `/register` command.")
-            logger.warning(f"Stats requested for unknown player")
+                await interaction.response.send_message(embed=embed)
+            else:
+                channel_id = self.config_manager.get('discord.channel_id')
+                channel = self.bot.get_channel(int(channel_id))
+                if channel:
+                    await channel.send(embed=embed)
+            logger.info(f"Posted stats for player: {player_name}")
+
+        except Exception as e:
+            logger.error(f"Error posting player stats: {str(e)}")
+            logger.error(traceback.format_exc())
+            embed = discord.Embed(color=discord.Color.red())
+            embed.add_field(
+                name="Error",
+                value="An error occurred while retrieving player statistics.",
+                inline=False
+            )
+            if interaction:
+                await interaction.response.send_message(embed=embed)
+            else:
+                channel_id = self.config_manager.get('discord.channel_id')
+                channel = self.bot.get_channel(int(channel_id))
+                if channel:
+                    await channel.send(embed=embed)
 
     @app_commands.command(name='wipedata', description='Wipe player statistics data')
     @app_commands.default_permissions(manage_guild=True)
     async def wipedata(self, interaction: discord.Interaction):
-        bak_file = os.path.join(self.parent_dir, "player_stats.db.bak")
-        if os.path.isfile(self.db_file):
-            if os.path.isfile(bak_file):
-                os.remove(bak_file)
-            os.rename(self.db_file, bak_file)
-            logger.info(f"Renamed existing database file to {bak_file}")
-        self.create_database()
-        await interaction.response.send_message("Player statistics data has been wiped and a new database has been created.")
-        logger.warning("Player statistics data wiped")
+        try:
+            bak_file = os.path.join(self.parent_dir, "player_stats.db.bak")
+            if os.path.isfile(self.db_file):
+                if os.path.isfile(bak_file):
+                    os.remove(bak_file)
+                os.rename(self.db_file, bak_file)
+                logger.info(f"Renamed existing database file to {bak_file}")
+            self.create_database()
+            
+            embed = discord.Embed(color=discord.Color.green())
+            embed.add_field(
+                name="Success",
+                value="Player statistics data has been wiped and a new database has been created.",
+                inline=False
+            )
+            await interaction.response.send_message(embed=embed)
+            logger.warning("Player statistics data wiped")
+        except Exception as e:
+            logger.error(f"Error wiping data: {str(e)}")
+            logger.error(traceback.format_exc())
+            embed = discord.Embed(color=discord.Color.red())
+            embed.add_field(
+                name="Error",
+                value="An error occurred while wiping the data.",
+                inline=False
+            )
+            await interaction.response.send_message(embed=embed)
 
     async def get_player_name(self, user_id):
-        with open(self.registrations_file, "r") as file:
-            registrations = json.load(file)
-
         try:
+            with open(self.registrations_file, "r") as file:
+                registrations = json.load(file)
             user_id_str = str(user_id)
-        except ValueError:
+            player_name = registrations.get(user_id_str)
+            logger.debug(f"Retrieved player name for user ID {user_id}: {player_name}")
+            return player_name
+        except Exception as e:
+            logger.error(f"Error getting player name: {str(e)}")
+            logger.error(traceback.format_exc())
             return None
 
-        player_name = registrations.get(user_id_str)
-        logger.debug(f"Retrieved player name for user ID {user_id}: {player_name}")
-        return player_name
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        """Monitor messages for stats processing"""
+        if message.author.bot:
+            return
 
-    def unit_stats(self, stats):
-        unit_stats = {}
-        for unit, _, count in stats:
-            unit_stats.setdefault(unit, 0)
-            unit_stats[unit] += count
-        return unit_stats.items()
-
-    def weapon_stats(self, stats):
-        weapon_stats = {}
-        for _, weapon, count in stats:
-            weapon_stats.setdefault(weapon, 0)
-            weapon_stats[weapon] += count
-        return weapon_stats.items()
+        if message.content.startswith('!statsme'):
+            player_name = await self.get_player_name(message.author.id)
+            if player_name:
+                await self.post_player_stats(player_name)
+            else:
+                embed = discord.Embed(color=discord.Color.red())
+                embed.add_field(
+                    name="Error",
+                    value="You need to register first using the `/register` command.",
+                    inline=False
+                )
+            await message.channel.send(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(StatsCog(bot))

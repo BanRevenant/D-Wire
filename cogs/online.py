@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import re
+import asyncio
 from logger import setup_logger
 from config_manager import ConfigManager
 
@@ -14,17 +15,35 @@ class OnlineCog(commands.Cog):
         self.bot = bot
         self.config_manager = bot.config_manager
         self.last_online_message = ""
-        self.reader_cog = self.bot.get_cog('ReaderCog')
-        if self.reader_cog:
-            self.reader_cog.subscribe("ONLINE2", self.process_online)
-        else:
-            logger.error("ReaderCog not found. Online tracking will not work.")
+        self.readlog_cog = None
         logger.info("OnlineCog initialized")
 
     def cog_unload(self):
-        if self.reader_cog:
-            self.reader_cog.unsubscribe("ONLINE2", self.process_online)
+        if self.readlog_cog:
+            self.readlog_cog.unsubscribe("ONLINE2", self.process_online)
         logger.info("OnlineCog unloaded")
+
+    async def ensure_readlog_cog(self):
+        """Ensure connection to ReadLogCog"""
+        max_attempts = 5
+        attempt = 0
+        while attempt < max_attempts:
+            self.readlog_cog = self.bot.get_cog('ReadLogCog')
+            if self.readlog_cog:
+                self.readlog_cog.subscribe("ONLINE2", self.process_online)
+                logger.info("Successfully connected to ReadLogCog.")
+                return True
+            attempt += 1
+            logger.warning(f"ReadLogCog not found (Attempt {attempt}/{max_attempts}). Retrying in 2 seconds...")
+            await asyncio.sleep(2)
+        
+        logger.error("ReadLogCog not found. Online tracking will not work.")
+        return False
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        await self.ensure_readlog_cog()
+        logger.info("OnlineCog is ready.")
 
     async def process_online(self, line):
         if "[ONLINE2]" in line:

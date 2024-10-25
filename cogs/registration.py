@@ -7,12 +7,13 @@ import re
 import string
 import json
 import datetime
+import asyncio
 from logger import setup_logger
 from config_manager import ConfigManager
 
 logger = setup_logger(__name__, 'logs/registration.log')
 
-ACCESS_PATTERN = r"\[ACCESS\] (\w+) (\w+) (\d+)"
+ACCESS_PATTERN = r"\[CMD\] NAME: ([^,]+), COMMAND: register, ARGS: (\d+)"
 
 class RegistrationCog(commands.Cog):
     def __init__(self, bot):
@@ -24,29 +25,43 @@ class RegistrationCog(commands.Cog):
         self.pending_registrations = {}
         self.registration_timestamps = {}
         self.create_registrations_file()
-        self.reader_cog = self.bot.get_cog('ReaderCog')
-        if self.reader_cog:
-            self.reader_cog.subscribe("ACCESS", self.process_registration)
-        else:
-            logger.error("ReaderCog not found. Registration will not work.")
+        self.readlog_cog = None
         logger.info("RegistrationCog initialized")
 
     def cog_unload(self):
-        if self.reader_cog:
-            self.reader_cog.unsubscribe("ACCESS", self.process_registration)
+        if self.readlog_cog:
+            self.readlog_cog.unsubscribe("CMD", self.process_registration)
         self.remove_expired_registrations.cancel()
         logger.info("RegistrationCog unloaded")
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        await self.ensure_readlog_cog()
+        self.remove_expired_registrations.start()
+        logger.info("RegistrationCog is ready.")
+
+    async def ensure_readlog_cog(self):
+        """Ensure connection to ReadLogCog"""
+        max_attempts = 5
+        attempt = 0
+        while attempt < max_attempts:
+            self.readlog_cog = self.bot.get_cog('ReadLogCog')
+            if self.readlog_cog:
+                self.readlog_cog.subscribe("CMD", self.process_registration)
+                logger.info("Successfully connected to ReadLogCog.")
+                return True
+            attempt += 1
+            logger.warning(f"ReadLogCog not found (Attempt {attempt}/{max_attempts}). Retrying in 2 seconds...")
+            await asyncio.sleep(2)
+        
+        logger.error("Max attempts reached. Registration functionality may be limited.")
+        return False
 
     def create_registrations_file(self):
         if not os.path.isfile(self.registrations_file):
             with open(self.registrations_file, "w") as file:
                 json.dump({}, file)
             logger.info(f"Created new registrations file: {self.registrations_file}")
-
-    @commands.Cog.listener()
-    async def on_ready(self):
-        logger.info("RegistrationCog is ready.")
-        self.remove_expired_registrations.start()
 
     @app_commands.command(name='register', description='Register for the Factorio server')
     async def register(self, interaction: discord.Interaction):
@@ -94,8 +109,8 @@ class RegistrationCog(commands.Cog):
     async def process_registration(self, line):
         match = re.search(ACCESS_PATTERN, line)
         if match:
-            rank, name, code = match.groups()
-            logger.debug(f"Received ACCESS message: Rank={rank}, Name={name}, Code={code}")
+            name, code = match.groups()
+            logger.debug(f"Received registration attempt: Name={name}, Code={code}")
 
             if code in self.pending_registrations:
                 user_id = self.pending_registrations[code]
@@ -103,7 +118,8 @@ class RegistrationCog(commands.Cog):
                 if guild:
                     member = guild.get_member(user_id)
                     if member:
-                        role_id = self.get_role_id(rank)
+                        # Default to 'normal' rank for now since we don't get rank info
+                        role_id = self.get_role_id('normal')
                         if role_id:
                             role = guild.get_role(int(role_id))
                             if role:
@@ -116,8 +132,8 @@ class RegistrationCog(commands.Cog):
                                 await member.send(f"Role with ID '{role_id}' not found.")
                                 logger.warning(f"Role with ID '{role_id}' not found in the server")
                         else:
-                            await member.send(f"Unknown rank: {rank}")
-                            logger.warning(f"Unknown rank: {rank}")
+                            await member.send(f"Unable to determine role.")
+                            logger.warning(f"Unable to determine role for registration")
 
                         del self.pending_registrations[code]
                         del self.registration_timestamps[code]

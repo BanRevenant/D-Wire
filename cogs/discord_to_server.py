@@ -1,7 +1,7 @@
+
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from factorio_rcon import RCONClient
-import json
 import asyncio
 from logger import setup_logger
 from config_manager import ConfigManager
@@ -17,6 +17,9 @@ class DiscordToServerCog(commands.Cog):
         self.rcon_port = self.config_manager.get('factorio_server.default_rcon_port')
         self.rcon_password = self.config_manager.get('factorio_server.default_rcon_password')
         self.channel_id = self.config_manager.get('discord.channel_id')
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.reconnect_delay = 10  # seconds
         logger.info("DiscordToServerCog initialized")
 
     async def connect_rcon(self):
@@ -24,11 +27,23 @@ class DiscordToServerCog(commands.Cog):
             self.rcon_client = RCONClient(self.rcon_host, self.rcon_port, self.rcon_password)
             await self.bot.loop.run_in_executor(None, self.rcon_client.connect)
             logger.info("RCON client connected successfully.")
+            self.reconnect_attempts = 0  # Reset reconnect attempts on success
             return True
         except Exception as e:
             logger.error(f"Error connecting to RCON: {str(e)}")
             self.rcon_client = None
             return False
+
+    async def reconnect_rcon(self):
+        while self.reconnect_attempts < self.max_reconnect_attempts:
+            logger.info(f"Attempting to reconnect RCON (Attempt {self.reconnect_attempts + 1})...")
+            success = await self.connect_rcon()
+            if success:
+                return
+            self.reconnect_attempts += 1
+            await asyncio.sleep(self.reconnect_delay)
+
+        logger.error("Max RCON reconnection attempts reached. Giving up.")
 
     async def disconnect_rcon(self):
         if self.rcon_client:
@@ -50,13 +65,13 @@ class DiscordToServerCog(commands.Cog):
             return
 
         server_management_cog = self.bot.get_cog('ServerManagementCog')
-        if not server_management_cog.is_server_running():
+        if not server_management_cog or not server_management_cog.is_server_running():
             await message.channel.send("The Factorio server is not running. Please start the server before sending messages.")
             return
 
         if not self.rcon_client:
-            success = await self.connect_rcon()
-            if not success:
+            await self.reconnect_rcon()
+            if not self.rcon_client:
                 await message.channel.send("Failed to establish RCON connection. Please try again later.")
                 return
 
@@ -68,7 +83,7 @@ class DiscordToServerCog(commands.Cog):
         except Exception as e:
             logger.error(f"Error sending RCON command: {str(e)}")
             await self.disconnect_rcon()
-            await message.channel.send("An error occurred while sending the message to the server. Please try again later.")
+            await self.reconnect_rcon()
 
     @commands.command()
     async def ping(self, ctx):
