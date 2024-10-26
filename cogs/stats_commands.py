@@ -4,10 +4,13 @@ from discord.ext import commands
 from discord import app_commands
 import json
 import traceback
+import re
 from logger import setup_logger
 from .stats_logger import StatsLogger
 
 logger = setup_logger(__name__, 'logs/stats_commands.log')
+
+CHAT_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[CHAT\] (.+): (.+)"
 
 class StatsCog(commands.Cog):
     def __init__(self, bot):
@@ -15,7 +18,9 @@ class StatsCog(commands.Cog):
         self.config_manager = bot.config_manager
         self.parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.registrations_file = os.path.join(self.parent_dir, "registrations.json")
-        self.stats_logger = StatsLogger(self.parent_dir)
+        if not hasattr(bot, 'stats_logger_instance'):
+            bot.stats_logger_instance = StatsLogger(self.parent_dir)
+        self.stats_logger = bot.stats_logger_instance
         self.readlog_cog = None
         logger.info("StatsCog initialized")
 
@@ -30,6 +35,7 @@ class StatsCog(commands.Cog):
                 self.readlog_cog.subscribe("STATS-D2", self.process_stats_line)
                 self.readlog_cog.subscribe("ACT", self.process_stats_line)
                 self.readlog_cog.subscribe("CHAT", self.process_stats_line)
+                self.readlog_cog.subscribe("CHAT_STATS", self.process_statsme_command)
                 logger.info("Successfully connected to ReadLogCog and subscribed to messages")
                 return True
             attempt += 1
@@ -38,6 +44,14 @@ class StatsCog(commands.Cog):
         
         logger.error("Max attempts reached. Stats tracking will not work.")
         return False
+
+    async def process_statsme_command(self, line):
+        """Process the !statsme command from chat."""
+        chat_match = re.search(CHAT_PATTERN, line)
+        if chat_match:
+            _, player_name, _ = chat_match.groups()
+            logger.info(f"Processing !statsme command for player {player_name}")
+            await self.post_player_stats(player_name, from_chat=True)  # Use existing method to post player stats
 
     async def process_stats_line(self, line):
         """Process a log line from ReadLogCog"""
@@ -58,7 +72,7 @@ class StatsCog(commands.Cog):
         await self.post_player_stats(player_name, interaction)
         logger.info(f"Stats command used for player: {player_name}")
 
-    async def post_player_stats(self, player_name, interaction=None):
+    async def post_player_stats(self, player_name, interaction=None, from_chat=False):
         logger.debug(f"Posting stats for player: {player_name}")
         if not player_name:
             embed = discord.Embed(color=discord.Color.red())
@@ -84,11 +98,20 @@ class StatsCog(commands.Cog):
 
             embed = discord.Embed(color=discord.Color.green())
             
-            # Set the author with avatar if we have an interaction
-            if interaction and interaction.user.avatar:
-                embed.set_author(name=f"Statistics for {player_name}", icon_url=interaction.user.avatar.url)
+            # Set the thumbnail to use the registered user's avatar
+            guild = self.bot.get_guild(int(self.config_manager.get('discord.server_id')))
+            if guild:
+                member_id = await self.get_user_id_from_player_name(player_name)
+                if member_id:
+                    member = guild.get_member(member_id)
+                    if member and member.avatar:
+                        embed.set_thumbnail(url=member.avatar.url)
+                    else:
+                        embed.set_thumbnail(url=self.bot.user.default_avatar.url)
+                else:
+                    embed.set_thumbnail(url=self.bot.user.default_avatar.url)
             else:
-                embed.set_author(name=f"Statistics for {player_name}")
+                embed.set_thumbnail(url=self.bot.user.default_avatar.url)
 
             if stats or death_stats or placed_stats:
                 total_kills = sum(count for _, _, count in stats) if stats else 0
@@ -185,6 +208,21 @@ class StatsCog(commands.Cog):
             logger.error(traceback.format_exc())
             return None
 
+    async def get_user_id_from_player_name(self, player_name):
+        try:
+            with open(self.registrations_file, "r") as file:
+                registrations = json.load(file)
+            for user_id, registered_name in registrations.items():
+                if registered_name == player_name:
+                    logger.debug(f"Retrieved user ID {user_id} for player name {player_name}")
+                    return int(user_id)
+            logger.warning(f"No user ID found for player name {player_name}")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting user ID from player name: {str(e)}")
+            logger.error(traceback.format_exc())
+            return None
+
     @commands.Cog.listener()
     async def on_message(self, message):
         """Monitor messages for stats processing"""
@@ -194,7 +232,11 @@ class StatsCog(commands.Cog):
         if message.content.startswith('!statsme'):
             player_name = await self.get_player_name(message.author.id)
             if player_name:
-                await self.post_player_stats(player_name)
+                channel_id = self.config_manager.get('discord.channel_id')
+                channel = self.bot.get_channel(int(channel_id))
+                if channel:
+                    await self.post_player_stats(player_name)
+                    logger.info(f"Processed !statsme command for player {player_name}")
             else:
                 embed = discord.Embed(color=discord.Color.red())
                 embed.add_field(

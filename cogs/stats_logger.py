@@ -6,32 +6,41 @@ import traceback
 from discord.ext import commands
 from logger import setup_logger
 
-logger = setup_logger(__name__, 'logs/stats_logger.log')
+# Ensure the logger is only set up once to prevent duplicate messages
+if 'stats_logger_instance' not in globals():
+    logger = setup_logger(__name__, 'logs/stats_logger.log')
+    # Remove all existing handlers to prevent duplicate log entries
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    logger = setup_logger(__name__, 'logs/stats_logger.log')
+    stats_logger_instance = None  # Global instance to prevent reinitialization
 
 class StatsLogger(commands.Cog):
     def __init__(self, bot):
+        global stats_logger_instance
+        if stats_logger_instance is not None:
+            logger.warning("StatsLogger instance already exists. Reusing existing instance.")
+            return  # Prevent multiple initializations
+
         self.bot = bot
         self.parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.db_file = os.path.join(self.parent_dir, "player_stats.db")
         self.stats_patterns = {
-            'stats_kill': r"\[STATS-E1\] \[([^]]+)\] killed \[([^]]+)\] with \[([^]]+)\]",
-            'stats_death': r"\[STATS-D2\] \[([^]]+)\] killed by \[([^]]+)\] force \[enemy\]",
+            'stats_kill': r"\[STATS-E1\] \[([^]]+)] killed \[([^]]+)] with \[([^]]+)]",
+            'stats_death': r"\[STATS-D2\] \[([^]]+)] killed by \[([^]]+)] force \[enemy]",
             'stats_place': r"\[ACT\] ([^[\]]+) placed"
         }
         self.create_database()
         logger.info("StatsLogger initialized")
+        stats_logger_instance = self  # Store the instance globally to prevent reinitialization
 
     def create_database(self):
         try:
             conn = sqlite3.connect(self.db_file)
             c = conn.cursor()
             
-            logger.debug("Creating/resetting database tables")
-            c.execute("DROP TABLE IF EXISTS player_stats")
-            c.execute("DROP TABLE IF EXISTS player_deaths")
-            c.execute("DROP TABLE IF EXISTS player_placed")
-            
-            c.execute("""CREATE TABLE player_stats
+            logger.debug("Creating database tables if they do not exist")
+            c.execute("""CREATE TABLE IF NOT EXISTS player_stats
                         (player_name TEXT,
                          action TEXT,
                          unit TEXT,
@@ -39,13 +48,13 @@ class StatsLogger(commands.Cog):
                          count INTEGER DEFAULT 1,
                          UNIQUE(player_name, action, unit, weapon))""")
             
-            c.execute("""CREATE TABLE player_deaths
+            c.execute("""CREATE TABLE IF NOT EXISTS player_deaths
                         (player_name TEXT,
                          killed_by TEXT,
                          count INTEGER DEFAULT 1,
                          UNIQUE(player_name, killed_by))""")
             
-            c.execute("""CREATE TABLE player_placed
+            c.execute("""CREATE TABLE IF NOT EXISTS player_placed
                         (player_name TEXT UNIQUE,
                          count INTEGER DEFAULT 1)""")
             
@@ -179,5 +188,8 @@ class StatsLogger(commands.Cog):
             return False
 
 async def setup(bot):
-    await bot.add_cog(StatsLogger(bot))
+    global stats_logger_instance
+    if stats_logger_instance is None:
+        stats_logger_instance = StatsLogger(bot)
+    await bot.add_cog(stats_logger_instance)
     logger.info("StatsLogger added to bot")
