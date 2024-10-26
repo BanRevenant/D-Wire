@@ -11,6 +11,19 @@ from config_manager import ConfigManager
 
 logger = setup_logger(__name__, 'logs/readlog.log')
 
+# Debug flags - can be controlled via config.json
+DEBUG_CONFIG = {
+    'debug_stats': True,      # For stats processing
+    'debug_commands': True,   # For command processing
+    'debug_chat': False,      # For chat messages
+    'debug_connections': False # For player connections/disconnections
+}
+
+def debug_log(category, message):
+    """Centralized debug logging with category control"""
+    if DEBUG_CONFIG.get(category, False):
+        logger.debug(f"[{category.upper()}] {message}")
+
 def load_geo_database(config_manager):
     database_path = config_manager.get('geo_database_path', 'GeoLite2-City.mmdb')
     try:
@@ -29,14 +42,14 @@ def get_location_from_ip(ip_address, reader):
         response = reader.city(clean_ip)
         country = response.country.name or "Unknown"
         state = response.subdivisions.most_specific.name if response.subdivisions else "Unknown"
-        logger.debug(f"IP Address: {clean_ip}, Country: {country}, State: {state}")
+        debug_log('connections', f"IP Address: {clean_ip}, Country: {country}, State: {state}")
         return country, state
     except Exception as e:
         logger.error(f"Error getting location for IP Address: {ip_address}, Error: {str(e)}")
         return "Unknown", "Unknown"
 
+# Pattern definitions
 IP_PATTERN = r"from\(IP ADDR:\((\{[0-9.]+:[0-9]+\})\)\)"
-# ... rest of the file remains the same ...
 JOIN_PATTERNS = [
     r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[JOIN\] (.+) joined the game",
     r"Player (.+) joined the game",
@@ -49,6 +62,10 @@ DEATH_PATTERN = r"\[MSG\] (\w+) was killed by (.+) at \[gps"
 CONNECTION_REFUSED_PATTERN = r"Refusing connection for address \(IP ADDR:\((\{[0-9.]+:[0-9]+\})\)\), username \((.+)\). UserVerificationMissing"
 GPS_PATTERN = r"\[gps=[-+]?\d*\.\d+,[-+]?\d*\.\d+\]"
 COMMAND_PATTERN = r"\[CMD\] NAME: ([^,]+), COMMAND: ([^,]+), ARGS: (.+)"
+STATS_KILL_PATTERN = r"\[STATS-E1\] \[([^]]+)\] ([^[]+) \[([^]]+)\] with \[([^]]+)\]"
+STATS_DEATH_PATTERN = r"\[STATS-D2\] \[([^]]+)\] killed by \[([^]]+)\] force \[enemy\]"
+STATS_PLACE_PATTERN = r"\[ACT\] ([^[\]]+) placed"
+ONLINE_PATTERN = r"\[ONLINE2\] (.*)"
 
 TIMEOUT_SECONDS = 30
 
@@ -73,9 +90,21 @@ class ReadLogCog(commands.Cog):
             "JOIN": set(),
             "LEAVE": set(),
             "CMD": set(),
-            "ONLINE2": set(),
-            "ACCESS": set()
+            "ONLINE2": set(),  # Online stats
+            "STATS-E1": set(),    # Kill stats
+            "STATS-D2": set(),    # Death stats
+            "ACT": set()          # Placed items stats
         }
+        
+        # Update debug config from bot config if available
+        if self.config_manager.get('debug_mode', False):
+            DEBUG_CONFIG.update({
+                'debug_stats': True,
+                'debug_commands': True,
+                'debug_chat': True,
+                'debug_connections': True
+            })
+        
         logger.info("ReadLogCog initialized")
 
     def subscribe(self, message_type, callback):
@@ -99,6 +128,8 @@ class ReadLogCog(commands.Cog):
         if message_type in self.message_subscribers:
             for callback in self.message_subscribers[message_type]:
                 try:
+                    debug_log('debug_stats' if 'STATS' in message_type else 'debug_commands', 
+                             f"Notifying subscriber {callback.__qualname__} for {message_type}")
                     await callback(line)
                 except Exception as e:
                     logger.error(f"Error in subscriber callback {callback.__qualname__}: {str(e)}")
@@ -161,7 +192,7 @@ class ReadLogCog(commands.Cog):
                         for ip_address, timestamp in list(self.ip_timestamps.items()):
                             if current_time - timestamp > TIMEOUT_SECONDS:
                                 if ip_address in self.ip_to_username:
-                                    logger.debug(f"Removing timed out IP Address: {ip_address}")
+                                    debug_log('connections', f"Removing timed out IP Address: {ip_address}")
                                     del self.ip_to_username[ip_address]
                                 if ip_address in self.ip_timestamps:
                                     del self.ip_timestamps[ip_address]
@@ -174,11 +205,32 @@ class ReadLogCog(commands.Cog):
 
     async def process_log_line(self, line, channel):
         try:
+            # Process stats messages
+            if "[STATS-E1]" in line:
+                debug_log('debug_stats', f"Found STATS-E1 message: {line.strip()}")
+                await self.notify_subscribers("STATS-E1", line)
+                return
+            
+            if "[STATS-D2]" in line:
+                debug_log('debug_stats', f"Found STATS-D2 message: {line.strip()}")
+                await self.notify_subscribers("STATS-D2", line)
+                return
+
+            if "[ACT]" in line and "placed" in line:
+                debug_log('debug_stats', f"Found placement message: {line.strip()}")
+                await self.notify_subscribers("ACT", line)
+                return
+
+            if "[ONLINE2]" in line:
+                debug_log('debug_stats', f"Found ONLINE2 message: {line.strip()}")
+                await self.notify_subscribers("ONLINE2", line)
+                return
+
             # Process command messages
             command_match = re.search(COMMAND_PATTERN, line)
             if command_match:
+                debug_log('debug_commands', f"Found command message: {line.strip()}")
                 await self.notify_subscribers("CMD", line)
-                logger.debug(f"Processed command message: {line.strip()}")
                 return
 
             # Process IP addresses
@@ -186,7 +238,7 @@ class ReadLogCog(commands.Cog):
             if ip_match:
                 ip_address = ip_match.group(1)
                 country, state = get_location_from_ip(ip_address, self.geo_reader)
-                logger.debug(f"Cached IP Address: {ip_address}, Location: {country}, {state}")
+                debug_log('connections', f"Cached IP Address: {ip_address}, Location: {country}, {state}")
                 self.ip_to_username[ip_address] = (None, country, state)
                 self.ip_timestamps[ip_address] = time.time()
 
@@ -196,7 +248,7 @@ class ReadLogCog(commands.Cog):
                 ip_address = connection_refused_match.group(1)
                 username = connection_refused_match.group(2)
                 if ip_address in self.ip_to_username:
-                    logger.debug(f"Removing cached IP Address: {ip_address} for Username: {username}")
+                    debug_log('connections', f"Removing cached IP Address: {ip_address} for Username: {username}")
                     del self.ip_to_username[ip_address]
                     del self.ip_timestamps[ip_address]
 
@@ -218,7 +270,7 @@ class ReadLogCog(commands.Cog):
                         
                         await channel.send(message)
                         await self.notify_subscribers("JOIN", line)
-                        logger.info(f"Join Event - Username: {username}, IP Address: {ip_address if ip_address else 'Not Found'}")
+                        debug_log('connections', f"Join Event - Username: {username}, IP Address: {ip_address if ip_address else 'Not Found'}")
                         break
 
             # Process other events
@@ -228,7 +280,7 @@ class ReadLogCog(commands.Cog):
             death_match = re.search(DEATH_PATTERN, line)
 
             if gps_match := re.search(GPS_PATTERN, line):
-                logger.debug(f"Skipping message containing GPS tag: {line.strip()}")
+                debug_log('debug_chat', f"Skipping message containing GPS tag: {line.strip()}")
                 return
 
             if research_match:
@@ -239,7 +291,7 @@ class ReadLogCog(commands.Cog):
                 message = f"**{chat_match.group(2)}** says: {chat_match.group(3)}"
                 await channel.send(message)
                 await self.notify_subscribers("CHAT", line)
-                logger.info(f"Chat Message - {chat_match.group(2)}: {chat_match.group(3)}")
+                debug_log('debug_chat', f"Chat Message - {chat_match.group(2)}: {chat_match.group(3)}")
             elif leave_match:
                 username = leave_match.group(2)
                 if username in self.connected_players:
@@ -247,7 +299,7 @@ class ReadLogCog(commands.Cog):
                 message = f"**{username}** left the game."
                 await channel.send(message)
                 await self.notify_subscribers("LEAVE", line)
-                logger.info(f"Leave Event - Username: {username}")
+                debug_log('connections', f"Leave Event - Username: {username}")
             elif death_match:
                 message = f"**{death_match.group(1)}** was killed by {death_match.group(2)}"
                 await channel.send(message)
