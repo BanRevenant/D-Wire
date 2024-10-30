@@ -28,13 +28,18 @@ class StatsLogger(commands.Cog):
         self.stats_patterns = {
             'stats_kill': r"\[STATS-E1\] \[([^]]+)] killed \[([^]]+)] with \[([^]]+)]",
             'stats_death': r"\[STATS-D2\] \[([^]]+)] killed by \[([^]]+)] force \[enemy]",
-            'stats_place': r"\[ACT\] ([^[\]]+) placed"
+            'stats_place': r"\[ACT\] ([^[\]]+) placed",
+            'stats_mine': r"\[ACT\] ([^[\]]+) mined ([^[\]]+) \["  # Simplified mining pattern
         }
-        self.create_database()
-        logger.info("StatsLogger initialized")
-        stats_logger_instance = self  # Store the instance globally to prevent reinitialization
-
-    def create_database(self):
+        # List of tree-related entities to ignore - expanded list
+        self.tree_entities = [
+            'tree-01', 'tree-02', 'tree-03', 'tree-04', 'tree-05',
+            'tree-06', 'tree-07', 'tree-08', 'tree-09', 'dead-',
+            'dry-hairy-tree', 'dry-tree', 'dead-dry-hairy-tree',
+            'dead-grey-trunk', 'dead-tree-desert'
+        ]
+        
+        # Initialize the database
         try:
             conn = sqlite3.connect(self.db_file)
             c = conn.cursor()
@@ -58,23 +63,49 @@ class StatsLogger(commands.Cog):
                         (player_name TEXT UNIQUE,
                          count INTEGER DEFAULT 1)""")
             
+            c.execute("""CREATE TABLE IF NOT EXISTS player_mined
+                        (player_name TEXT,
+                         item_type TEXT,
+                         count INTEGER DEFAULT 1,
+                         UNIQUE(player_name, item_type))""")
+            
             conn.commit()
             conn.close()
             logger.info(f"Database initialized at {self.db_file}")
         except Exception as e:
             logger.error(f"Error creating database: {str(e)}")
             logger.error(traceback.format_exc())
+        
+        logger.info("StatsLogger initialized")
+        stats_logger_instance = self
+
+    def is_tree_entity(self, unit):
+        """Check if an entity is tree-related"""
+        return any(tree_type in unit for tree_type in self.tree_entities)
 
     async def process_line(self, line):
         """Process a log line for statistics"""
         try:
             logger.debug(f"Processing line: {line}")
             
+            # Process mining
+            mine_match = re.search(self.stats_patterns['stats_mine'], line)
+            if mine_match:
+                player_name, item_type = mine_match.groups()
+                logger.info(f"Mine match found - Player: {player_name}, Item: {item_type}")
+                self.update_mined_database(player_name, item_type)
+                return
+
+            # Process kills - with tree filtering
             kill_match = re.search(self.stats_patterns['stats_kill'], line)
             if kill_match:
                 player_name, unit, weapon = kill_match.groups()
-                logger.debug(f"Kill match found - Player: {player_name}, Unit: {unit}, Weapon: {weapon}")
-                self.update_database(player_name, "kill", unit, weapon)
+                # Skip if the killed entity is a tree
+                if not self.is_tree_entity(unit):
+                    logger.debug(f"Kill match found - Player: {player_name}, Unit: {unit}, Weapon: {weapon}")
+                    self.update_database(player_name, "kill", unit, weapon)
+                else:
+                    logger.debug(f"Skipping tree entity: {unit}")
                 return
 
             death_match = re.search(self.stats_patterns['stats_death'], line)
@@ -90,8 +121,6 @@ class StatsLogger(commands.Cog):
                 logger.debug(f"Place match found - Player: {player_name}")
                 self.update_placed_database(player_name)
                 return
-
-            logger.debug("No match found for line.")
 
         except Exception as e:
             logger.error(f"Error processing stats line: {str(e)}")
@@ -148,13 +177,40 @@ class StatsLogger(commands.Cog):
             logger.error(f"Error updating placed database: {str(e)}")
             logger.error(traceback.format_exc())
 
+    def update_mined_database(self, player_name, item_type):
+        try:
+            conn = sqlite3.connect(self.db_file)
+            c = conn.cursor()
+            logger.info(f"Updating mined database for player {player_name} - Item: {item_type}")
+            c.execute("""INSERT INTO player_mined (player_name, item_type)
+                        VALUES (?, ?)
+                        ON CONFLICT(player_name, item_type)
+                        DO UPDATE SET count = count + 1""",
+                     (player_name, item_type))
+            conn.commit()
+            conn.close()
+            logger.info(f"Mined database updated successfully for player {player_name} - Item: {item_type}")
+        except Exception as e:
+            logger.error(f"Error updating mined database: {str(e)}")
+            logger.error(traceback.format_exc())
+
     async def get_player_stats(self, player_name):
         try:
             conn = sqlite3.connect(self.db_file)
             c = conn.cursor()
             
             logger.debug(f"Fetching stats for player {player_name}")
-            c.execute("SELECT unit, weapon, count FROM player_stats WHERE player_name = ?", (player_name,))
+            
+            # Get non-tree kills
+            c.execute("""
+                SELECT unit, weapon, count 
+                FROM player_stats 
+                WHERE player_name = ? 
+                AND action = 'kill'
+                AND unit NOT LIKE 'tree-%'
+                AND unit NOT LIKE 'dead-%'
+                AND unit NOT LIKE '%dry%'
+            """, (player_name,))
             stats = c.fetchall()
 
             c.execute("SELECT killed_by, count FROM player_deaths WHERE player_name = ?", (player_name,))
@@ -163,14 +219,17 @@ class StatsLogger(commands.Cog):
             c.execute("SELECT count FROM player_placed WHERE player_name = ?", (player_name,))
             placed_stats = c.fetchone()
 
+            c.execute("SELECT item_type, count FROM player_mined WHERE player_name = ?", (player_name,))
+            mined_stats = c.fetchall()
+
             conn.close()
-            logger.info(f"Retrieved stats for player {player_name}: kills={stats}, deaths={death_stats}, placed={placed_stats}")
-            return stats, death_stats, placed_stats
+            logger.info(f"Retrieved stats for player {player_name}")
+            return stats, death_stats, placed_stats, mined_stats
 
         except Exception as e:
             logger.error(f"Error getting player stats: {str(e)}")
             logger.error(traceback.format_exc())
-            return None, None, None
+            return None, None, None, None
 
     def wipe_database(self):
         try:
@@ -179,7 +238,38 @@ class StatsLogger(commands.Cog):
                 if os.path.isfile(bak_file):
                     os.remove(bak_file)
                 os.rename(self.db_file, bak_file)
-            self.create_database()
+            
+            # Recreate the database
+            conn = sqlite3.connect(self.db_file)
+            c = conn.cursor()
+            
+            c.execute("""CREATE TABLE IF NOT EXISTS player_stats
+                        (player_name TEXT,
+                         action TEXT,
+                         unit TEXT,
+                         weapon TEXT,
+                         count INTEGER DEFAULT 1,
+                         UNIQUE(player_name, action, unit, weapon))""")
+            
+            c.execute("""CREATE TABLE IF NOT EXISTS player_deaths
+                        (player_name TEXT,
+                         killed_by TEXT,
+                         count INTEGER DEFAULT 1,
+                         UNIQUE(player_name, killed_by))""")
+            
+            c.execute("""CREATE TABLE IF NOT EXISTS player_placed
+                        (player_name TEXT UNIQUE,
+                         count INTEGER DEFAULT 1)""")
+            
+            c.execute("""CREATE TABLE IF NOT EXISTS player_mined
+                        (player_name TEXT,
+                         item_type TEXT,
+                         count INTEGER DEFAULT 1,
+                         UNIQUE(player_name, item_type))""")
+            
+            conn.commit()
+            conn.close()
+            
             logger.warning("Player statistics data wiped")
             return True
         except Exception as e:

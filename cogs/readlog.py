@@ -68,6 +68,7 @@ STATS_KILL_PATTERN = r"\[STATS-E1\] \[([^]]+)\] ([^[]+) \[([^]]+)\] with \[([^]]
 STATS_DEATH_PATTERN = r"\[STATS-D2\] \[([^]]+)\] killed by \[([^]]+)\] force \[enemy\]"
 STATS_PLACE_PATTERN = r"\[ACT\] ([^[\]]+) placed"
 ONLINE_PATTERN = r"\[ONLINE2\] (.*)"
+STATS_MINE_PATTERN = r"\[ACT\] ([^[\]]+) mined ([^[\]]+) \[gps="
 
 TIMEOUT_SECONDS = 30
 
@@ -383,10 +384,15 @@ class ReadLogCog(commands.Cog):
                 await self.notify_subscribers("STATS-D2", line)
                 return
 
-            if "[ACT]" in line and "placed" in line:
-                debug_log('debug_stats', f"Found placement message: {line.strip()}")
-                await self.notify_subscribers("ACT", line)
+            if "[ACT]" in line:
+                if "placed" in line:
+                    debug_log('debug_stats', f"Found placement message: {line.strip()}")
+                    await self.notify_subscribers("ACT", line)
+                elif "mined" in line:
+                    debug_log('debug_stats', f"Found mining message: {line.strip()}")
+                    await self.notify_subscribers("ACT", line)
                 return
+
 
             if "[ONLINE2]" in line:
                 debug_log('debug_stats', f"Found ONLINE2 message: {line.strip()}")

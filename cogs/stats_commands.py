@@ -5,6 +5,7 @@ from discord import app_commands
 import json
 import traceback
 import re
+import asyncio
 from logger import setup_logger
 from .stats_logger import StatsLogger
 
@@ -51,7 +52,7 @@ class StatsCog(commands.Cog):
         if chat_match:
             _, player_name, _ = chat_match.groups()
             logger.info(f"Processing !statsme command for player {player_name}")
-            await self.post_player_stats(player_name, from_chat=True)  # Use existing method to post player stats
+            await self.post_player_stats(player_name, from_chat=True)
 
     async def process_stats_line(self, line):
         """Process a log line from ReadLogCog"""
@@ -92,13 +93,13 @@ class StatsCog(commands.Cog):
             return
 
         try:
-            # Get stats from the logger (now correctly awaiting)
-            stats, death_stats, placed_stats = await self.stats_logger.get_player_stats(player_name)
-            logger.debug(f"Retrieved stats for {player_name}: kills={stats}, deaths={death_stats}, placed={placed_stats}")
+            # Get stats from the logger
+            stats, death_stats, placed_stats, mined_stats = await self.stats_logger.get_player_stats(player_name)
+            logger.debug(f"Retrieved stats for {player_name}")
 
             embed = discord.Embed(color=discord.Color.green())
             
-            # Set the thumbnail to use the registered user's avatar
+            # Set the thumbnail
             guild = self.bot.get_guild(int(self.config_manager.get('discord.server_id')))
             if guild:
                 member_id = await self.get_user_id_from_player_name(player_name)
@@ -106,24 +107,19 @@ class StatsCog(commands.Cog):
                     member = guild.get_member(member_id)
                     if member and member.avatar:
                         embed.set_thumbnail(url=member.avatar.url)
-                    else:
-                        embed.set_thumbnail(url=self.bot.user.default_avatar.url)
-                else:
-                    embed.set_thumbnail(url=self.bot.user.default_avatar.url)
-            else:
-                embed.set_thumbnail(url=self.bot.user.default_avatar.url)
 
-            if stats or death_stats or placed_stats:
+            if stats or death_stats or placed_stats or mined_stats:
                 total_kills = sum(count for _, _, count in stats) if stats else 0
                 total_deaths = sum(count for _, count in death_stats) if death_stats else 0
                 total_placed = placed_stats[0] if placed_stats else 0
+                total_mined = sum(count for _, count in mined_stats) if mined_stats else 0
 
-                embed.add_field(
-                    name="Overall Stats",
-                    value=f"Total Kills: {total_kills}\nTotal Deaths: {total_deaths}\nPlaced Objects: {total_placed}",
-                    inline=False
-                )
+                # Overall Stats section
+                overall_stats = f"Total Kills: {total_kills}\nTotal Deaths: {total_deaths}\n"
+                overall_stats += f"Placed Objects: {total_placed}\nPicked Objects: {total_mined}"
+                embed.add_field(name="Overall Stats:", value=overall_stats, inline=False)
 
+                # Kills Breakdown section (renamed from Bug Kills)
                 if stats:
                     unit_stats = {}
                     weapon_stats = {}
@@ -134,12 +130,18 @@ class StatsCog(commands.Cog):
                     if unit_stats:
                         unit_text = "\n".join([f"{unit}: {count}" for unit, count in
                             sorted(unit_stats.items(), key=lambda x: x[1], reverse=True)])
-                        embed.add_field(name="Bug Kills:", value=unit_text, inline=True)
+                        embed.add_field(name="Kills Breakdown:", value=unit_text, inline=True)
 
                     if weapon_stats:
                         weapon_text = "\n".join([f"{weapon}: {count}" for weapon, count in
                             sorted(weapon_stats.items(), key=lambda x: x[1], reverse=True)])
                         embed.add_field(name="Weapon Kills:", value=weapon_text, inline=True)
+
+                # Add Mining Breakdown section
+                # if mined_stats:
+                    # mined_text = "\n".join([f"{item_type}: {count}" for item_type, count in
+                        # sorted(mined_stats, key=lambda x: x[1], reverse=True)])
+                    # embed.add_field(name="Mining Breakdown:", value=mined_text, inline=True)
             else:
                 embed.add_field(
                     name="No Stats",
