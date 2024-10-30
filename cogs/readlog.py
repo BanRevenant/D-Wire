@@ -2,10 +2,12 @@ import os
 import re
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
 import geoip2.database
 import logging
 import traceback
 import time
+import json
 from logger import setup_logger
 from config_manager import ConfigManager
 
@@ -76,28 +78,40 @@ class ReadLogCog(commands.Cog):
         self.log_file = self.config_manager.get('factorio_server.server_log_file')
         self.parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.position_file = os.path.join(self.parent_dir, "last_position.txt")
+        self.location_prefs_file = os.path.join(self.parent_dir, "location_prefs.json")
+        
+        # Ensure location_prefs.json exists
+        if not os.path.exists(self.location_prefs_file):
+            try:
+                with open(self.location_prefs_file, 'w') as f:
+                    json.dump({}, f)
+                logger.info(f"Created new location preferences file: {self.location_prefs_file}")
+            except Exception as e:
+                logger.error(f"Error creating location preferences file: {str(e)}")
+        
         try:
             with open(self.position_file, 'r') as f:
                 self.last_position = int(f.read().strip())
         except:
             self.last_position = 0
+            
         self.geo_reader = load_geo_database(self.config_manager)
         self.ip_to_username = {}
         self.ip_timestamps = {}
         self.connected_players = set()
+        self.location_preferences = self.load_location_preferences()
         self.message_subscribers = {
             "CHAT": set(),
             "CHAT_STATS": set(),
             "JOIN": set(),
             "LEAVE": set(),
             "CMD": set(),
-            "ONLINE2": set(),  # Online stats
-            "STATS-E1": set(),    # Kill stats
-            "STATS-D2": set(),    # Death stats
-            "ACT": set()          # Placed items stats
+            "ONLINE2": set(),
+            "STATS-E1": set(),
+            "STATS-D2": set(),
+            "ACT": set()
         }
         
-        # Update debug config from bot config if available
         if self.config_manager.get('debug_mode', False):
             DEBUG_CONFIG.update({
                 'debug_stats': True,
@@ -108,8 +122,68 @@ class ReadLogCog(commands.Cog):
         
         logger.info("ReadLogCog initialized")
 
+    def load_location_preferences(self):
+        """Load location display preferences from JSON file"""
+        try:
+            with open(self.location_prefs_file, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading location preferences: {str(e)}")
+            return {}
+
+    def save_location_preferences(self):
+        """Save location display preferences to JSON file"""
+        try:
+            with open(self.location_prefs_file, 'w') as f:
+                json.dump(self.location_preferences, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving location preferences: {str(e)}")
+
+    def get_factorio_username(self, discord_id):
+        """Get Factorio username from registrations file"""
+        registrations_file = os.path.join(self.parent_dir, "registrations.json")
+        try:
+            with open(registrations_file, 'r') as f:
+                registrations = json.load(f)
+                return registrations.get(str(discord_id))
+        except Exception as e:
+            logger.error(f"Error reading registrations file: {str(e)}")
+            return None
+
+    @app_commands.command(name="disablelocation", description="Enable or disable location display when joining the server")
+    @app_commands.describe(
+        setting="Choose whether to show or hide your location"
+    )
+    @app_commands.choices(setting=[
+        app_commands.Choice(name="Enable", value="enable"),
+        app_commands.Choice(name="Disable", value="disable")
+    ])
+    async def disablelocation(self, interaction: discord.Interaction, setting: app_commands.Choice[str]):
+        # Check if user is registered
+        factorio_username = self.get_factorio_username(interaction.user.id)
+        if not factorio_username:
+            await interaction.response.send_message(
+                "You must be registered on the Factorio server to use this command. "
+                "Please use `/register` first.", 
+                ephemeral=True
+            )
+            return
+
+        # Update preference
+        self.location_preferences[str(interaction.user.id)] = {
+            "show_location": setting.value == "enable",
+            "factorio_username": factorio_username
+        }
+        self.save_location_preferences()
+
+        status = "enabled" if setting.value == "enable" else "disabled"
+        await interaction.response.send_message(
+            f"Location display has been {status}. This will take effect the next time you join the server.",
+            ephemeral=True
+        )
+        logger.info(f"Updated location preference for user {interaction.user.id} ({factorio_username}): {status}")
+
     def subscribe(self, message_type, callback):
-        """Subscribe to a specific message type."""
         if message_type in self.message_subscribers:
             self.message_subscribers[message_type].add(callback)
             logger.info(f"Added subscriber for {message_type} messages: {callback.__qualname__}")
@@ -117,7 +191,6 @@ class ReadLogCog(commands.Cog):
             logger.warning(f"Attempted to subscribe to unknown message type: {message_type}")
 
     def unsubscribe(self, message_type, callback):
-        """Unsubscribe from a specific message type."""
         if message_type in self.message_subscribers:
             self.message_subscribers[message_type].discard(callback)
             logger.info(f"Removed subscriber for {message_type} messages: {callback.__qualname__}")
@@ -125,7 +198,6 @@ class ReadLogCog(commands.Cog):
             logger.warning(f"Attempted to unsubscribe from unknown message type: {message_type}")
 
     async def notify_subscribers(self, message_type, line):
-        """Notify all subscribers of a specific message type."""
         if message_type in self.message_subscribers:
             for callback in self.message_subscribers[message_type]:
                 try:
@@ -136,16 +208,8 @@ class ReadLogCog(commands.Cog):
                     logger.error(f"Error in subscriber callback {callback.__qualname__}: {str(e)}")
                     logger.error(traceback.format_exc())
 
-    def cog_unload(self):
-        try:
-            with open(self.position_file, 'w') as f:
-                f.write(str(self.last_position))
-        except Exception as e:
-            logger.error(f"Error saving last position during unload: {str(e)}")
-        self.check_log.cancel()
-        logger.info("ReadLogCog unloaded")
-
     def get_last_position(self):
+        """Get the last read position from the position file"""
         try:
             with open(self.position_file, "r") as file:
                 return int(file.read().strip())
@@ -155,6 +219,15 @@ class ReadLogCog(commands.Cog):
         except Exception as e:
             logger.error(f"Error reading position file: {str(e)}")
             return 0
+
+    def cog_unload(self):
+        try:
+            with open(self.position_file, 'w') as f:
+                f.write(str(self.last_position))
+        except Exception as e:
+            logger.error(f"Error saving last position during unload: {str(e)}")
+        self.check_log.cancel()
+        logger.info("ReadLogCog unloaded")
 
     @tasks.loop(seconds=1)
     async def check_log(self):
@@ -189,6 +262,7 @@ class ReadLogCog(commands.Cog):
                                 logger.error(f"Error processing log line: {line}, Error: {str(e)}")
                                 logger.error(traceback.format_exc())
 
+                        # Clean up old IP addresses
                         current_time = time.time()
                         for ip_address, timestamp in list(self.ip_timestamps.items()):
                             if current_time - timestamp > TIMEOUT_SECONDS:
@@ -206,11 +280,6 @@ class ReadLogCog(commands.Cog):
 
     async def process_log_line(self, line, channel):
         try:
-            # Skip lines containing the GPS pattern
-            if "[gps" in line:
-                debug_log('debug_chat', f"Skipping message containing GPS tag: {line.strip()}")
-                return
-
             # Match the chat pattern and detect if it's the !statsme command
             chat_match = re.search(CHAT_PATTERN, line)
             if chat_match:
@@ -218,18 +287,92 @@ class ReadLogCog(commands.Cog):
                 if message.strip() == '!statsme':
                     player_name = username
                     logger.info(f"Processing !statsme command for player: {player_name}")
-                    # Notify subscribers for the stats command
                     await self.notify_subscribers("CHAT_STATS", line)
                     return
 
             # Existing chat handling code
             if chat_match and not any(pattern in chat_match.group(3) for pattern in ['!statsme', '/register']):
-                message = f"**{chat_match.group(2)}** says: {chat_match.group(3)}"
-                await channel.send(message)
+                # Only skip sending to Discord if it contains GPS coordinates
+                if "[gps" not in chat_match.group(3):
+                    message = f"**{chat_match.group(2)}** says: {chat_match.group(3)}"
+                    await channel.send(message)
+                else:
+                    debug_log('debug_chat', f"Skipping GPS message for Discord: {chat_match.group(3)}")
+                
+                # Still notify chat subscribers regardless of GPS content
                 await self.notify_subscribers("CHAT", line)
                 debug_log('debug_chat', f"Chat Message - {chat_match.group(2)}: {chat_match.group(3)}")
 
-            # Process stats messages
+            ip_match = re.search(IP_PATTERN, line)
+            if ip_match:
+                ip_address = ip_match.group(1)
+                country, state = get_location_from_ip(ip_address, self.geo_reader)
+                debug_log('connections', f"Cached IP Address: {ip_address}, Location: {country}, {state}")
+                self.ip_to_username[ip_address] = (None, country, state)
+                self.ip_timestamps[ip_address] = time.time()
+
+            connection_refused_match = re.search(CONNECTION_REFUSED_PATTERN, line)
+            if connection_refused_match:
+                ip_address = connection_refused_match.group(1)
+                username = connection_refused_match.group(2)
+                if ip_address in self.ip_to_username:
+                    debug_log('connections', f"Removing cached IP Address: {ip_address} for Username: {username}")
+                    del self.ip_to_username[ip_address]
+                    del self.ip_timestamps[ip_address]
+
+            for pattern in JOIN_PATTERNS:
+                join_match = re.search(pattern, line)
+                if join_match:
+                    username = join_match.group(2) if len(join_match.groups()) > 1 else join_match.group(1)
+                    if username not in self.connected_players:
+                        self.connected_players.add(username)
+                        ip_address = next((ip for ip, (user, _, _) in self.ip_to_username.items() if user is None), None)
+
+                        # Check user's location display preference
+                        show_location = True
+                        for user_id, prefs in self.location_preferences.items():
+                            if prefs.get('factorio_username') == username:
+                                show_location = prefs.get('show_location', True)
+                                break
+
+                        if ip_address:
+                            self.ip_to_username[ip_address] = (username, self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2])
+                            
+                            if show_location:
+                                country, state = self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2]
+                                message = f"**{username}** has joined the game from **{state}, {country}**."
+                            else:
+                                message = f"**{username}** has joined the game. (Location Hidden)"
+                        else:
+                            message = f"**{username}** has joined the game."
+                        
+                        await channel.send(message)
+                        await self.notify_subscribers("JOIN", line)
+                        debug_log('connections', f"Join Event - Username: {username}, IP Address: {ip_address if ip_address else 'Not Found'}")
+                        break
+
+            research_match = re.search(RESEARCH_PATTERN, line)
+            leave_match = re.search(LEAVE_PATTERN, line)
+            death_match = re.search(DEATH_PATTERN, line)
+
+            if research_match:
+                message = f"**Research Completed:** {research_match.group(1)}"
+                await channel.send(message)
+                logger.info(f"Research Completed: {research_match.group(1)}")
+            elif leave_match:
+                username = leave_match.group(2)
+                if username in self.connected_players:
+                    self.connected_players.remove(username)
+                message = f"**{username}** left the game."
+                await channel.send(message)
+                await self.notify_subscribers("LEAVE", line)
+                debug_log('connections', f"Leave Event - Username: {username}")
+            elif death_match:
+                message = f"**{death_match.group(1)}** was killed by {death_match.group(2)}"
+                await channel.send(message)
+                logger.info(f"Death Event - {death_match.group(1)} killed by {death_match.group(2)}")
+
+            # Process other event patterns
             if "[STATS-E1]" in line:
                 debug_log('debug_stats', f"Found STATS-E1 message: {line.strip()}")
                 await self.notify_subscribers("STATS-E1", line)
@@ -256,68 +399,6 @@ class ReadLogCog(commands.Cog):
                 debug_log('debug_commands', f"Found command message: {line.strip()}")
                 await self.notify_subscribers("CMD", line)
                 return
-
-            # Process IP addresses
-            ip_match = re.search(IP_PATTERN, line)
-            if ip_match:
-                ip_address = ip_match.group(1)
-                country, state = get_location_from_ip(ip_address, self.geo_reader)
-                debug_log('connections', f"Cached IP Address: {ip_address}, Location: {country}, {state}")
-                self.ip_to_username[ip_address] = (None, country, state)
-                self.ip_timestamps[ip_address] = time.time()
-
-            # Process connection refusals
-            connection_refused_match = re.search(CONNECTION_REFUSED_PATTERN, line)
-            if connection_refused_match:
-                ip_address = connection_refused_match.group(1)
-                username = connection_refused_match.group(2)
-                if ip_address in self.ip_to_username:
-                    debug_log('connections', f"Removing cached IP Address: {ip_address} for Username: {username}")
-                    del self.ip_to_username[ip_address]
-                    del self.ip_timestamps[ip_address]
-
-            # Process player joins
-            for pattern in JOIN_PATTERNS:
-                join_match = re.search(pattern, line)
-                if join_match:
-                    username = join_match.group(2) if len(join_match.groups()) > 1 else join_match.group(1)
-                    if username not in self.connected_players:
-                        self.connected_players.add(username)
-                        ip_address = next((ip for ip, (user, _, _) in self.ip_to_username.items() if user is None), None)
-                        
-                        if ip_address:
-                            self.ip_to_username[ip_address] = (username, self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2])
-                            country, state = self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2]
-                            message = f"**{username}** has joined the game from **{state}, {country}**."
-                        else:
-                            message = f"**{username}** has joined the game."
-                        
-                        await channel.send(message)
-                        await self.notify_subscribers("JOIN", line)
-                        debug_log('connections', f"Join Event - Username: {username}, IP Address: {ip_address if ip_address else 'Not Found'}")
-                        break
-
-            # Process other events
-            research_match = re.search(RESEARCH_PATTERN, line)
-            leave_match = re.search(LEAVE_PATTERN, line)
-            death_match = re.search(DEATH_PATTERN, line)
-
-            if research_match:
-                message = f"**Research Completed:** {research_match.group(1)}"
-                await channel.send(message)
-                logger.info(f"Research Completed: {research_match.group(1)}")
-            elif leave_match:
-                username = leave_match.group(2)
-                if username in self.connected_players:
-                    self.connected_players.remove(username)
-                message = f"**{username}** left the game."
-                await channel.send(message)
-                await self.notify_subscribers("LEAVE", line)
-                debug_log('connections', f"Leave Event - Username: {username}")
-            elif death_match:
-                message = f"**{death_match.group(1)}** was killed by {death_match.group(2)}"
-                await channel.send(message)
-                logger.info(f"Death Event - {death_match.group(1)} killed by {death_match.group(2)}")
 
         except Exception as e:
             logger.error(f"Error in process_log_line: {str(e)}")
