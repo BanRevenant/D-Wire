@@ -206,6 +206,11 @@ class ReadLogCog(commands.Cog):
 
     async def process_log_line(self, line, channel):
         try:
+            # Skip lines containing the GPS pattern
+            if "[gps" in line:
+                debug_log('debug_chat', f"Skipping message containing GPS tag: {line.strip()}")
+                return
+
             # Match the chat pattern and detect if it's the !statsme command
             chat_match = re.search(CHAT_PATTERN, line)
             if chat_match:
@@ -223,6 +228,7 @@ class ReadLogCog(commands.Cog):
                 await channel.send(message)
                 await self.notify_subscribers("CHAT", line)
                 debug_log('debug_chat', f"Chat Message - {chat_match.group(2)}: {chat_match.group(3)}")
+
             # Process stats messages
             if "[STATS-E1]" in line:
                 debug_log('debug_stats', f"Found STATS-E1 message: {line.strip()}")
@@ -295,10 +301,6 @@ class ReadLogCog(commands.Cog):
             research_match = re.search(RESEARCH_PATTERN, line)
             leave_match = re.search(LEAVE_PATTERN, line)
             death_match = re.search(DEATH_PATTERN, line)
-
-            if gps_match := re.search(GPS_PATTERN, line):
-                debug_log('debug_chat', f"Skipping message containing GPS tag: {line.strip()}")
-                return
 
             if research_match:
                 message = f"**Research Completed:** {research_match.group(1)}"
