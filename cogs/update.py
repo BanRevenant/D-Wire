@@ -72,7 +72,7 @@ class UpdateCog(commands.Cog):
             async with session.head(url) as response:
                 return response.headers.get("Last-Modified")
 
-    @tasks.loop(minutes=1)
+    @tasks.loop(hours=1)
     async def check_for_updates(self):
         try:
             current_version = await self.check_version()
