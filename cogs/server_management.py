@@ -77,29 +77,31 @@ class ServerManagementCog(commands.Cog):
             except Exception as e:
                 logger.error(f"Failed to rename verbose log file: {str(e)}")
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        await self.update_bot_status()
-        logger.info("ServerManagementCog is ready")
-
-    async def update_bot_status(self):
-        if self.is_server_running():
-            await self.bot.change_presence(status=discord.Status.do_not_disturb, activity=discord.Game(name="Factorio."))
-            logger.info("Bot status updated: Server running")
-        else:
-            await self.bot.change_presence(status=discord.Status.idle, activity=discord.Game(name="Nothing."))
-            logger.info("Bot status updated: Server not running")
-
     @app_commands.command(name='startserver', description='Start the Factorio server with optional configuration')
     @app_commands.describe(port='Port number for the server (default: config value)')
     @app_commands.describe(save_file='Specific save file to load (default: latest save)')
     async def startserver(self, interaction: discord.Interaction, port: int = None, save_file: str = None):
-        if self.is_server_running():
-            await interaction.response.send_message("The server is already running.")
-            logger.warning("Attempted to start server when it's already running")
-            return
+        await interaction.response.defer()  # Deferring to allow time for processing
+        response = await self.start_server(port, save_file)
+        await interaction.followup.send(response)  # Using followup to send response after deferring
 
-        await interaction.response.defer(thinking=True)  # Send the initial defer with thinking animation
+    @app_commands.command(name='stopserver', description='Stop the Factorio server')
+    async def stopserver(self, interaction: discord.Interaction):
+        await interaction.response.defer()  # Deferring to allow time for processing
+        response = await self.stop_server()
+        await interaction.followup.send(response)  # Using followup to send response after deferring
+
+    @app_commands.command(name='restartserver', description='Restart the Factorio server')
+    async def restartserver(self, interaction: discord.Interaction):
+        await interaction.response.defer()  # Deferring to allow time for processing
+        response = await self.restart_server()
+        await interaction.followup.send(response)  # Using followup to send response after deferring
+
+    async def start_server(self, port: int = None, save_file: str = None):
+        if self.is_server_running():
+            logger.warning("Attempted to start server when it's already running")
+            return "The server is already running."
+
         try:
             self.rename_verbose_log_file()
 
@@ -138,21 +140,18 @@ class ServerManagementCog(commands.Cog):
             except PermissionError:
                 logger.warning("PermissionError when trying to set session ID")
 
-            await interaction.followup.send("Server started successfully.")  # Use followup for the response after defer
             await self.update_bot_status()
             logger.info(f"Server started with PID {self.server_pid}")
+            return "Server started successfully."
         except Exception as e:
-            await interaction.followup.send(f"Failed to start server: {str(e)}")
             logger.error(f"Failed to start server: {str(e)}")
+            return f"Failed to start server: {str(e)}"
 
-    @app_commands.command(name='stopserver', description='Stop the Factorio server')
-    async def stopserver(self, interaction: discord.Interaction):
+    async def stop_server(self):
         if not self.is_server_running():
-            await interaction.response.send_message("The server is already stopped.")
             logger.warning("Attempted to stop server when it's not running")
-            return
+            return "The server is already stopped."
 
-        await interaction.response.defer()
         try:
             process = psutil.Process(self.server_pid)
             for proc in process.children(recursive=True):
@@ -161,7 +160,6 @@ class ServerManagementCog(commands.Cog):
             self.server_pid = None
             self.server_command = None
             os.remove(SERVER_INFO_FILE)
-            await interaction.followup.send("Server stopped successfully.")
             logger.info("Server stopped successfully")
 
             await asyncio.sleep(5)
@@ -172,68 +170,45 @@ class ServerManagementCog(commands.Cog):
                 subprocess.call(['killall', '-9', 'factorio'])
 
             await self.update_bot_status()
+            return "Server stopped successfully."
         except Exception as e:
-            await interaction.followup.send(f"Failed to stop server: {str(e)}")
             logger.error(f"Failed to stop server: {str(e)}")
+            return f"Failed to stop server: {str(e)}"
 
-    @app_commands.command(name='restart', description='Restart the Factorio server')
-    async def restart(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        try:
-            self.load_server_info()
+    async def restart_server(self):
+        stop_result = await self.stop_server()
+        if "successfully" not in stop_result:
+            return stop_result
 
-            if self.server_pid:
-                process = psutil.Process(self.server_pid)
-                for proc in process.children(recursive=True):
-                    proc.kill()
-                process.kill()
-                self.server_pid = None
-                self.server_command = None
-                os.remove(SERVER_INFO_FILE)
+        start_result = await self.start_server()
+        return start_result
 
-                while process.is_running():
-                    await asyncio.sleep(1)
+    @commands.Cog.listener()
+    async def on_ready(self):
+        await self.update_bot_status()
+        logger.info("ServerManagementCog is ready")
 
-            self.rename_verbose_log_file()
-
-            factorio_exe = self.config_manager.get('factorio_server.executable')
-            default_port = self.config_manager.get('factorio_server.default_port')
-            bind_address = self.config_manager.get('factorio_server.default_bind_address')
-            rcon_port = self.config_manager.get('factorio_server.default_rcon_port')
-            rcon_password = self.config_manager.get('factorio_server.default_rcon_password')
-            server_settings = self.config_manager.get('factorio_server.server_settings_file')
-            server_adminlist = self.config_manager.get('factorio_server.server_adminlist_file')
-            verbose_log_file = self.config_manager.get('factorio_server.verbose_log_file')
-
-            command = [
-                factorio_exe,
-                '--port', str(default_port),
-                '--bind', bind_address,
-                '--rcon-port', str(rcon_port),
-                '--rcon-password', rcon_password,
-                '--server-settings', server_settings,
-                '--server-adminlist', server_adminlist,
-                '--start-server-load-latest'
-            ]
-
-            verbose_log_file = open(verbose_log_file, 'w')
-            self.server_process = subprocess.Popen(command, stdout=verbose_log_file, stderr=subprocess.STDOUT, start_new_session=True)
-            self.server_pid = self.server_process.pid
-            self.server_command = ' '.join(command)
-            self.save_server_info(self.server_command, self.server_pid)
-
-            try:
-                setsid()
-            except PermissionError:
-                logger.warning("PermissionError when trying to set session ID")
-
-            await interaction.followup.send("Server restarted successfully.")
-            await self.update_bot_status()
-            logger.info(f"Server restarted with PID {self.server_pid}")
-        except Exception as e:
-            await interaction.followup.send(f"Failed to restart server: {str(e)}")
-            logger.error(f"Failed to restart server: {str(e)}")
+    async def update_bot_status(self):
+        if self.is_server_running():
+            await self.bot.change_presence(status=discord.Status.do_not_disturb, activity=discord.Game(name="Factorio."))
+            logger.info("Bot status updated: Server running")
+        else:
+            await self.bot.change_presence(status=discord.Status.idle, activity=discord.Game(name="Nothing."))
+            logger.info("Bot status updated: Server not running")
 
 async def setup(bot):
     await bot.add_cog(ServerManagementCog(bot))
     logger.info("ServerManagementCog added to bot")
+
+# Standalone function bindings for external script access
+async def start_server(port=None, save_file=None):
+    cog = ServerManagementCog(None)
+    return await cog.start_server(port, save_file)
+
+async def stop_server():
+    cog = ServerManagementCog(None)
+    return await cog.stop_server()
+
+async def restart_server():
+    cog = ServerManagementCog(None)
+    return await cog.restart_server()
