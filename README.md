@@ -7,7 +7,8 @@ D-Wire is a Discord bot that allows you to manage your Factorio server seamlessl
 **This is a self-hosted bot that runs alongside your Factorio server instance. It currently supports Linux, with plans to expand once development features are finalized.**
 
 ### Invite the Bot to Your Discord Server
-[Invite Link](https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&scope=bot)
+https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&scope=bot
+-- You will need to use your own APPLICATION ID, Leave the remainder of the link alone.
 
 ## Key Features
 * **Server Control**: Start and stop the Factorio server with ease, including customizable parameters.
