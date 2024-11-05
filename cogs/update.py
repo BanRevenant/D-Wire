@@ -32,12 +32,14 @@ class UpdateCog(commands.Cog):
 
     def cog_unload(self):
         self.check_for_updates.cancel()
+        logger.info("Update check task cancelled")
 
     async def connect_rcon(self):
         try:
             self.rcon_client = RCONClient(self.rcon_host, self.rcon_port, self.rcon_password)
             await self.bot.loop.run_in_executor(None, self.rcon_client.connect)
             logger.info("RCON client connected successfully.")
+            self.reconnect_attempts = 0  # Reset attempts on successful connection
             return True
         except Exception as e:
             logger.error(f"Error connecting to RCON: {str(e)}")
@@ -78,11 +80,14 @@ class UpdateCog(commands.Cog):
             current_version = await self.check_version()
             if self.last_modified is None:
                 self.last_modified = current_version
+                logger.info("Initial version check completed")
             elif current_version != self.last_modified:
                 logger.info("New Factorio version detected")
                 channel = self.bot.get_channel(int(self.update_channel_id))
                 if channel:
-                    await channel.send("A new Factorio version is available! Use `/update` to update the server.")
+                    await channel.send("🔄 New Factorio version detected! Starting automatic update process...")
+                    logger.info("Starting automatic update process")
+                    await self.perform_update_sequence()
                 self.last_modified = current_version
         except Exception as e:
             logger.error(f"Error checking for updates: {str(e)}")
@@ -90,6 +95,7 @@ class UpdateCog(commands.Cog):
     @check_for_updates.before_loop
     async def before_check_for_updates(self):
         await self.bot.wait_until_ready()
+        logger.info("Update check task is ready to start")
 
     async def perform_update_sequence(self, interaction: discord.Interaction = None):
         embed = discord.Embed(
@@ -101,107 +107,109 @@ class UpdateCog(commands.Cog):
         
         if interaction:
             message = await interaction.followup.send(embed=embed)
+            logger.info(f"Update sequence started by user interaction")
         else:
             channel = self.bot.get_channel(int(self.update_channel_id))
             message = await channel.send(embed=embed)
+            logger.info("Automatic update sequence started")
 
-        # Step 1: Save the game via RCON
-        embed.add_field(
-            name="Game Save",
-            value="🔄 Connecting to server...",
-            inline=False
-        )
+        status_fields = []
+
+        # Initialize all fields with pending status
+        status_fields.extend([
+            {"name": "Game Save", "value": "⏳ Connecting to server...", "inline": False},
+            {"name": "Server Shutdown", "value": "⏳ Waiting...", "inline": False},
+            {"name": "Server Update", "value": "⏳ Waiting...", "inline": False},
+            {"name": "Server Startup", "value": "⏳ Waiting...", "inline": False}
+        ])
+
+        # Update embed with all fields
+        embed.clear_fields()
+        for field in status_fields:
+            embed.add_field(**field)
         await message.edit(embed=embed)
 
+        # Step 1: Save the game via RCON
         server_management = self.bot.get_cog('ServerManagementCog')
         if not server_management or not server_management.is_server_running():
-            embed.set_field_at(
-                0,
-                name="Game Save",
-                value="❌ Server is not running",
-                inline=False
-            )
+            status_fields[0]["value"] = "❌ Server is not running"
+            embed.clear_fields()
+            for field in status_fields:
+                embed.add_field(**field)
             await message.edit(embed=embed)
+            logger.warning("Update attempted while server was not running")
             return
 
         if not self.rcon_client:
+            logger.info("Attempting to establish RCON connection")
             await self.reconnect_rcon()
 
         if self.rcon_client:
             try:
+                status_fields[0]["value"] = "🔄 Saving game..."
+                embed.clear_fields()
+                for field in status_fields:
+                    embed.add_field(**field)
+                await message.edit(embed=embed)
+
                 response = await self.bot.loop.run_in_executor(None, self.rcon_client.send_command, "/server-save")
                 logger.info(f"RCON command sent: /server-save")
                 logger.info(f"RCON response: {response}")
-                embed.set_field_at(
-                    0,
-                    name="Game Save",
-                    value="✅ Game saved successfully",
-                    inline=False
-                )
+                status_fields[0]["value"] = "✅ Game saved successfully"
             except Exception as e:
-                embed.set_field_at(
-                    0,
-                    name="Game Save",
-                    value=f"❌ Failed to save game: {str(e)}",
-                    inline=False
-                )
+                status_fields[0]["value"] = f"❌ Failed to save game: {str(e)}"
                 logger.error(f"Failed to save game: {str(e)}")
         else:
-            embed.set_field_at(
-                0,
-                name="Game Save",
-                value="❌ Failed to connect to server",
-                inline=False
-            )
+            status_fields[0]["value"] = "❌ Failed to connect to server"
+            logger.error("Failed to establish RCON connection")
 
+        embed.clear_fields()
+        for field in status_fields:
+            embed.add_field(**field)
         await message.edit(embed=embed)
         await asyncio.sleep(5)
         await self.disconnect_rcon()
 
         # Step 2: Stop the server
-        embed.add_field(
-            name="Server Shutdown",
-            value="🔄 Stopping server...",
-            inline=False
-        )
+        status_fields[1]["value"] = "🔄 Stopping server..."
+        embed.clear_fields()
+        for field in status_fields:
+            embed.add_field(**field)
         await message.edit(embed=embed)
 
         if server_management:
             server_pid = server_management.server_pid
             stop_result = await server_management.stop_server()
-            embed.set_field_at(
-                1,
-                name="Server Shutdown",
-                value=f"✅ Server stopped (PID: {server_pid})" if "successfully" in stop_result else f"❌ {stop_result}",
-                inline=False
-            )
+            status_fields[1]["value"] = f"✅ Server stopped (PID: {server_pid})" if "successfully" in stop_result else f"❌ {stop_result}"
+            logger.info(f"Server stop attempt completed with result: {stop_result}")
         else:
-            embed.set_field_at(
-                1,
-                name="Server Shutdown",
-                value="❌ Server management not available",
-                inline=False
-            )
+            status_fields[1]["value"] = "❌ Server management not available"
+            logger.error("Server management cog not available")
+
+        embed.clear_fields()
+        for field in status_fields:
+            embed.add_field(**field)
         await message.edit(embed=embed)
 
         # Step 3: Update the server
-        embed.add_field(
-            name="Server Update",
-            value="🔄 Downloading update...",
-            inline=False
-        )
-        await message.edit(embed=embed)
-
         install_location = self.config_manager.get('factorio_server.factorio_install_location')
         os.makedirs(install_location, exist_ok=True)
+        logger.info(f"Ensuring install location exists: {install_location}")
 
         try:
+            status_fields[2]["value"] = "🔄 Downloading update..."
+            embed.clear_fields()
+            for field in status_fields:
+                embed.add_field(**field)
+            await message.edit(embed=embed)
+
             download_url = 'https://www.factorio.com/get-download/latest/headless/linux64'
             async with aiohttp.ClientSession() as session:
                 async with session.get(download_url) as response:
                     if response.status == 200:
                         file_name = 'factorio-headless-linux64.tar.xz'
                         file_path = os.path.join(install_location, file_name)
+                        logger.info(f"Downloading update to: {file_path}")
 
                         with open(file_path, 'wb') as f:
                             while True:
@@ -210,75 +218,66 @@ class UpdateCog(commands.Cog):
                                     break
                                 f.write(chunk)
 
-                        embed.set_field_at(
-                            2,
-                            name="Server Update",
-                            value="✅ Download complete\n🔄 Extracting files...",
-                            inline=False
-                        )
+                        status_fields[2]["value"] = "✅ Download complete\n🔄 Extracting files..."
+                        embed.clear_fields()
+                        for field in status_fields:
+                            embed.add_field(**field)
                         await message.edit(embed=embed)
 
                         # Extract files
+                        logger.info("Extracting update files")
                         with tarfile.open(file_path, 'r:xz') as tar:
                             tar.extractall(install_location)
 
                         # Set permissions
                         factorio_exe = os.path.join(install_location, 'factorio', 'bin', 'x64', 'factorio')
                         os.chmod(factorio_exe, 0o755)
+                        logger.info(f"Set executable permissions on: {factorio_exe}")
 
                         # Clean up
                         os.remove(file_path)
+                        logger.info("Cleaned up download file")
 
-                        embed.set_field_at(
-                            2,
-                            name="Server Update",
-                            value="✅ Update completed successfully",
-                            inline=False
-                        )
+                        status_fields[2]["value"] = "✅ Update completed successfully"
                     else:
-                        embed.set_field_at(
-                            2,
-                            name="Server Update",
-                            value=f"❌ Download failed (Status: {response.status})",
-                            inline=False
-                        )
+                        status_fields[2]["value"] = f"❌ Download failed (Status: {response.status})"
+                        logger.error(f"Download failed with status: {response.status}")
         except Exception as e:
-            embed.set_field_at(
-                2,
-                name="Server Update",
-                value=f"❌ Update failed: {str(e)}",
-                inline=False
-            )
+            status_fields[2]["value"] = f"❌ Update failed: {str(e)}"
             logger.error(f"Update failed: {str(e)}")
+            logger.error(f"Stack trace: ", exc_info=True)
 
+        embed.clear_fields()
+        for field in status_fields:
+            embed.add_field(**field)
         await message.edit(embed=embed)
 
         # Step 4: Start the server
-        embed.add_field(
-            name="Server Startup",
-            value="🔄 Starting server...",
-            inline=False
-        )
+        status_fields[3]["value"] = "🔄 Starting server..."
+        embed.clear_fields()
+        for field in status_fields:
+            embed.add_field(**field)
         await message.edit(embed=embed)
 
         if server_management:
             start_result = await server_management.start_server()
-            embed.set_field_at(
-                3,
-                name="Server Startup",
-                value="✅ Server started successfully" if "successfully" in start_result else f"❌ {start_result}",
-                inline=False
-            )
+            if "successfully" in start_result:
+                new_pid = server_management.server_pid
+                status_fields[3]["value"] = f"✅ Server started successfully (PID: {new_pid})"
+                logger.info(f"Server started with new PID: {new_pid}")
+            else:
+                status_fields[3]["value"] = f"❌ {start_result}"
+                logger.error(f"Failed to start server: {start_result}")
         else:
-            embed.set_field_at(
-                3,
-                name="Server Startup",
-                value="❌ Server management not available",
-                inline=False
-            )
+            status_fields[3]["value"] = "❌ Server management not available"
+            logger.error("Server management not available for startup")
 
         embed.color = discord.Color.green()
+        embed.clear_fields()
+        for field in status_fields:
+            embed.add_field(**field)
         await message.edit(embed=embed)
+        logger.info("Update sequence completed")
         return message
 
     @app_commands.command(name='testupdate', description='Test the automatic update process')
