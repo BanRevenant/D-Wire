@@ -119,7 +119,7 @@ class StatsCog(commands.Cog):
                 overall_stats += f"Placed Objects: {total_placed}\nPicked Objects: {total_mined}"
                 embed.add_field(name="Overall Stats:", value=overall_stats, inline=False)
 
-                # Kills Breakdown section (renamed from Bug Kills)
+                # Process unit stats with pagination if needed
                 if stats:
                     unit_stats = {}
                     weapon_stats = {}
@@ -128,20 +128,91 @@ class StatsCog(commands.Cog):
                         weapon_stats[weapon] = weapon_stats.get(weapon, 0) + count
 
                     if unit_stats:
-                        unit_text = "\n".join([f"{unit}: {count}" for unit, count in
-                            sorted(unit_stats.items(), key=lambda x: x[1], reverse=True)])
-                        embed.add_field(name="Kills Breakdown:", value=unit_text, inline=True)
+                        # Sort unit stats by count
+                        sorted_unit_stats = sorted(unit_stats.items(), key=lambda x: x[1], reverse=True)
+                        
+                        # Split into chunks if needed
+                        unit_chunks = []
+                        current_chunk = []
+                        current_length = 0
+                        
+                        for unit, count in sorted_unit_stats:
+                            line = f"{unit}: {count}\n"
+                            if current_length + len(line) > 1024:
+                                if current_chunk:  # Only append if there's content
+                                    unit_chunks.append("".join(current_chunk))
+                                current_chunk = [line]
+                                current_length = len(line)
+                            else:
+                                current_chunk.append(line)
+                                current_length += len(line)
+                        
+                        if current_chunk:  # Add the last chunk
+                            unit_chunks.append("".join(current_chunk))
+                        
+                        # Add fields for each chunk
+                        for i, chunk in enumerate(unit_chunks):
+                            field_name = "Kills Breakdown:" if i == 0 else f"Kills Breakdown (Cont. {i}):"
+                            embed.add_field(name=field_name, value=chunk, inline=True)
 
                     if weapon_stats:
-                        weapon_text = "\n".join([f"{weapon}: {count}" for weapon, count in
-                            sorted(weapon_stats.items(), key=lambda x: x[1], reverse=True)])
-                        embed.add_field(name="Weapon Kills:", value=weapon_text, inline=True)
+                        # Sort weapon stats by count
+                        sorted_weapon_stats = sorted(weapon_stats.items(), key=lambda x: x[1], reverse=True)
+                        
+                        # Split into chunks if needed
+                        weapon_chunks = []
+                        current_chunk = []
+                        current_length = 0
+                        
+                        for weapon, count in sorted_weapon_stats:
+                            line = f"{weapon}: {count}\n"
+                            if current_length + len(line) > 1024:
+                                if current_chunk:  # Only append if there's content
+                                    weapon_chunks.append("".join(current_chunk))
+                                current_chunk = [line]
+                                current_length = len(line)
+                            else:
+                                current_chunk.append(line)
+                                current_length += len(line)
+                        
+                        if current_chunk:  # Add the last chunk
+                            weapon_chunks.append("".join(current_chunk))
+                        
+                        # Add fields for each chunk
+                        for i, chunk in enumerate(weapon_chunks):
+                            field_name = "Weapon Kills:" if i == 0 else f"Weapon Kills (Cont. {i}):"
+                            embed.add_field(name=field_name, value=chunk, inline=True)
 
-                # Add Mining Breakdown section
-                # if mined_stats:
-                    # mined_text = "\n".join([f"{item_type}: {count}" for item_type, count in
-                        # sorted(mined_stats, key=lambda x: x[1], reverse=True)])
-                    # embed.add_field(name="Mining Breakdown:", value=mined_text, inline=True)
+                # Add death stats if available
+                if death_stats:
+                    death_text = "\n".join([f"{killed_by}: {count}" for killed_by, count in
+                        sorted(death_stats, key=lambda x: x[1], reverse=True)])
+                    if len(death_text) <= 1024:
+                        embed.add_field(name="Death Breakdown:", value=death_text, inline=True)
+                    else:
+                        # Split death stats if too long
+                        death_chunks = []
+                        current_chunk = []
+                        current_length = 0
+                        
+                        for killed_by, count in sorted(death_stats, key=lambda x: x[1], reverse=True):
+                            line = f"{killed_by}: {count}\n"
+                            if current_length + len(line) > 1024:
+                                if current_chunk:
+                                    death_chunks.append("".join(current_chunk))
+                                current_chunk = [line]
+                                current_length = len(line)
+                            else:
+                                current_chunk.append(line)
+                                current_length += len(line)
+                        
+                        if current_chunk:
+                            death_chunks.append("".join(current_chunk))
+                        
+                        for i, chunk in enumerate(death_chunks):
+                            field_name = "Death Breakdown:" if i == 0 else f"Death Breakdown (Cont. {i}):"
+                            embed.add_field(name=field_name, value=chunk, inline=True)
+
             else:
                 embed.add_field(
                     name="No Stats",

@@ -36,7 +36,8 @@ class StatsLogger(commands.Cog):
             'tree-01', 'tree-02', 'tree-03', 'tree-04', 'tree-05',
             'tree-06', 'tree-07', 'tree-08', 'tree-09', 'dead-',
             'dry-hairy-tree', 'dry-tree', 'dead-dry-hairy-tree',
-            'dead-grey-trunk', 'dead-tree-desert'
+            'dead-grey-trunk', 'dead-tree-desert', 'demolisher-',
+            '-tree-', 'volcanic'
         ]
         
         # Initialize the database
