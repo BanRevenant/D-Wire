@@ -211,6 +211,12 @@ class StatsLogger(commands.Cog):
                 AND unit NOT LIKE 'tree-%'
                 AND unit NOT LIKE 'dead-%'
                 AND unit NOT LIKE '%dry%'
+                AND unit NOT LIKE 'demolisher-%'
+                AND unit NOT LIKE 'small-demolisher-%'
+                AND unit NOT LIKE '%-tree'
+                AND unit NOT LIKE '%-volcanic-%'
+                AND unit NOT LIKE '%-lichen-tree-%'
+
             """, (player_name,))
             stats = c.fetchall()
 

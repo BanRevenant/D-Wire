@@ -1,8 +1,21 @@
 -- https://lua-api.factorio.com/latest/events.html#on_player_died
 local function player_died(event)
     local player = game.players[event.player_index]
-    local force_name = event.cause.force.name
-    if event.cause.is_player() then
+    
+    -- Handle case where there's no cause
+    if not event.cause then
+        print("[STATS-D3] [" .. player.name .. "] died from unknown cause")
+        return
+    end
+    
+    -- Handle case where cause exists but force might not
+    local force_name = "unknown"
+    if event.cause.force then
+        force_name = event.cause.force.name
+    end
+    
+    -- Check if killed by player
+    if event.cause.is_player and event.cause.is_player() then
         print("[STATS-D1] [" .. player.name .. "] killed by player [" .. event.cause.player.name .. "] force [" .. force_name .. "]")
         return
     end
@@ -26,7 +39,7 @@ end
 -- https://lua-api.factorio.com/latest/events.html#on_entity_died
 local function entity_died(event)
     if not event.cause then
-    return
+        return
     end
 
     local player
