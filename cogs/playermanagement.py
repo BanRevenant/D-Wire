@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands 
 from factorio_rcon import RCONClient
 from logger import setup_logger
 from config_manager import ConfigManager
