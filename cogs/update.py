@@ -117,7 +117,7 @@ class UpdateCog(commands.Cog):
 
         # Initialize all fields with pending status
         status_fields.extend([
-            {"name": "Game Save", "value": "⏳ Connecting to server...", "inline": False},
+            {"name": "Game Save", "value": "⏳ Checking server status...", "inline": False},
             {"name": "Server Shutdown", "value": "⏳ Waiting...", "inline": False},
             {"name": "Server Update", "value": "⏳ Waiting...", "inline": False},
             {"name": "Server Startup", "value": "⏳ Waiting...", "inline": False}
@@ -129,62 +129,64 @@ class UpdateCog(commands.Cog):
             embed.add_field(**field)
         await message.edit(embed=embed)
 
-        # Step 1: Save the game via RCON
+        # Step 1: Check server status and save if running
         server_management = self.bot.get_cog('ServerManagementCog')
-        if not server_management or not server_management.is_server_running():
-            status_fields[0]["value"] = "❌ Server is not running"
-            embed.clear_fields()
-            for field in status_fields:
-                embed.add_field(**field)
-            await message.edit(embed=embed)
-            logger.warning("Update attempted while server was not running")
-            return
+        server_running = server_management and server_management.is_server_running()
 
-        if not self.rcon_client:
-            logger.info("Attempting to establish RCON connection")
-            await self.reconnect_rcon()
+        if server_running:
+            if not self.rcon_client:
+                logger.info("Attempting to establish RCON connection")
+                await self.reconnect_rcon()
 
-        if self.rcon_client:
-            try:
-                status_fields[0]["value"] = "🔄 Saving game..."
-                embed.clear_fields()
-                for field in status_fields:
-                    embed.add_field(**field)
-                await message.edit(embed=embed)
+            if self.rcon_client:
+                try:
+                    status_fields[0]["value"] = "🔄 Saving game..."
+                    embed.clear_fields()
+                    for field in status_fields:
+                        embed.add_field(**field)
+                    await message.edit(embed=embed)
 
-                response = await self.bot.loop.run_in_executor(None, self.rcon_client.send_command, "/server-save")
-                logger.info(f"RCON command sent: /server-save")
-                logger.info(f"RCON response: {response}")
-                status_fields[0]["value"] = "✅ Game saved successfully"
-            except Exception as e:
-                status_fields[0]["value"] = f"❌ Failed to save game: {str(e)}"
-                logger.error(f"Failed to save game: {str(e)}")
+                    response = await self.bot.loop.run_in_executor(None, self.rcon_client.send_command, "/server-save")
+                    logger.info(f"RCON command sent: /server-save")
+                    logger.info(f"RCON response: {response}")
+                    status_fields[0]["value"] = "✅ Game saved successfully"
+                except Exception as e:
+                    status_fields[0]["value"] = f"❌ Failed to save game: {str(e)}"
+                    logger.error(f"Failed to save game: {str(e)}")
+                finally:
+                    await self.disconnect_rcon()
+            else:
+                status_fields[0]["value"] = "❌ Failed to connect to server"
+                logger.error("Failed to establish RCON connection")
         else:
-            status_fields[0]["value"] = "❌ Failed to connect to server"
-            logger.error("Failed to establish RCON connection")
+            status_fields[0]["value"] = "ℹ️ Server not running - skipping save"
+            logger.info("Server not running - skipping save step")
 
         embed.clear_fields()
         for field in status_fields:
             embed.add_field(**field)
         await message.edit(embed=embed)
-        await asyncio.sleep(5)
-        await self.disconnect_rcon()
+        await asyncio.sleep(2)
 
-        # Step 2: Stop the server
-        status_fields[1]["value"] = "🔄 Stopping server..."
+        # Step 2: Stop the server (if running)
+        status_fields[1]["value"] = "🔄 Checking server status..."
         embed.clear_fields()
         for field in status_fields:
             embed.add_field(**field)
         await message.edit(embed=embed)
 
-        if server_management:
-            server_pid = server_management.server_pid
-            stop_result = await server_management.stop_server()
-            status_fields[1]["value"] = f"✅ Server stopped (PID: {server_pid})" if "successfully" in stop_result else f"❌ {stop_result}"
-            logger.info(f"Server stop attempt completed with result: {stop_result}")
+        if server_running:
+            if server_management:
+                server_pid = server_management.server_pid
+                stop_result = await server_management.stop_server()
+                status_fields[1]["value"] = f"✅ Server stopped (PID: {server_pid})" if "successfully" in stop_result else f"❌ {stop_result}"
+                logger.info(f"Server stop attempt completed with result: {stop_result}")
+            else:
+                status_fields[1]["value"] = "❌ Server management not available"
+                logger.error("Server management cog not available")
         else:
-            status_fields[1]["value"] = "❌ Server management not available"
-            logger.error("Server management cog not available")
+            status_fields[1]["value"] = "ℹ️ Server already stopped"
+            logger.info("Server already stopped - skipping stop step")
 
         embed.clear_fields()
         for field in status_fields:
@@ -253,24 +255,28 @@ class UpdateCog(commands.Cog):
         await message.edit(embed=embed)
 
         # Step 4: Start the server
-        status_fields[3]["value"] = "🔄 Starting server..."
-        embed.clear_fields()
-        for field in status_fields:
-            embed.add_field(**field)
-        await message.edit(embed=embed)
+        if server_running:  # Only try to start if it was running before
+            status_fields[3]["value"] = "🔄 Starting server..."
+            embed.clear_fields()
+            for field in status_fields:
+                embed.add_field(**field)
+            await message.edit(embed=embed)
 
-        if server_management:
-            start_result = await server_management.start_server()
-            if "successfully" in start_result:
-                new_pid = server_management.server_pid
-                status_fields[3]["value"] = f"✅ Server started successfully (PID: {new_pid})"
-                logger.info(f"Server started with new PID: {new_pid}")
+            if server_management:
+                start_result = await server_management.start_server()
+                if "successfully" in start_result:
+                    new_pid = server_management.server_pid
+                    status_fields[3]["value"] = f"✅ Server started successfully (PID: {new_pid})"
+                    logger.info(f"Server started with new PID: {new_pid}")
+                else:
+                    status_fields[3]["value"] = f"❌ {start_result}"
+                    logger.error(f"Failed to start server: {start_result}")
             else:
-                status_fields[3]["value"] = f"❌ {start_result}"
-                logger.error(f"Failed to start server: {start_result}")
+                status_fields[3]["value"] = "❌ Server management not available"
+                logger.error("Server management not available for startup")
         else:
-            status_fields[3]["value"] = "❌ Server management not available"
-            logger.error("Server management not available for startup")
+            status_fields[3]["value"] = "ℹ️ Server was not running - skipping start"
+            logger.info("Server was not running - skipping start step")
 
         embed.color = discord.Color.green()
         embed.clear_fields()
