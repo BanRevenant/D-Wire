@@ -53,6 +53,7 @@ class PlayerManagementCog(commands.Cog):
             return "An error occurred while sending the command to the server."
 
     @commands.hybrid_command(name='enablecheats', description='Enable or disable cheats on the Factorio server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.guild_only()
     async def enablecheats(self, ctx, value: str):
         value = value.lower()
@@ -66,6 +67,7 @@ class PlayerManagementCog(commands.Cog):
         logger.info(f"Cheats {'enabled' if value == 'on' else 'disabled'} by {ctx.author}")
 
     @commands.hybrid_command(name='cspawn', description='Spawn the character at the specified coordinates')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.guild_only()
     async def cspawn(self, ctx, coordinates: str):
         response = await self.send_rcon_command(f"/cspawn {coordinates}")
@@ -73,6 +75,7 @@ class PlayerManagementCog(commands.Cog):
         logger.info(f"Character spawned at {coordinates} by {ctx.author}")
 
     @commands.hybrid_command(name='rechart', description='Recreate the map')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.guild_only()
     async def rechart(self, ctx):
         response = await self.send_rcon_command("/rechart")
@@ -80,6 +83,7 @@ class PlayerManagementCog(commands.Cog):
         logger.info(f"Map recharted by {ctx.author}")
 
     @commands.hybrid_command(name='kick', description='Kick a player from the server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.has_permissions(kick_members=True)
     @commands.guild_only()
     async def kick(self, ctx, name: str):
@@ -88,6 +92,7 @@ class PlayerManagementCog(commands.Cog):
         logger.info(f"Player {name} kicked by {ctx.author}")
 
     @commands.hybrid_command(name='ban', description='Ban a player from the server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.has_permissions(ban_members=True)
     @commands.guild_only()
     async def ban(self, ctx, name: str):
@@ -96,6 +101,7 @@ class PlayerManagementCog(commands.Cog):
         logger.info(f"Player {name} banned by {ctx.author}")
 
     @commands.hybrid_command(name='unban', description='Unban a player from the server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.has_permissions(ban_members=True)
     @commands.guild_only()
     async def unban(self, ctx, name: str):
@@ -104,6 +110,7 @@ class PlayerManagementCog(commands.Cog):
         logger.info(f"Player {name} unbanned by {ctx.author}")
 
     @commands.hybrid_command(name='unbanish', description='Unbanish a player on the server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.guild_only()
     async def unbanish(self, ctx, name: str):
         response = await self.send_rcon_command(f"/unbanish {name}")
@@ -111,6 +118,7 @@ class PlayerManagementCog(commands.Cog):
         logger.info(f"Player {name} unbanished by {ctx.author}")
 
     @commands.hybrid_command(name='banish', description='Banish a player on the server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.guild_only()
     async def banish(self, ctx, name: str):
         response = await self.send_rcon_command(f"/banish {name}")
@@ -118,6 +126,7 @@ class PlayerManagementCog(commands.Cog):
         logger.info(f"Player {name} banished by {ctx.author}")
 
     @commands.hybrid_command(name='mute', description='Mute a player on the server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.guild_only()
     async def mute(self, ctx, name: str):
         response = await self.send_rcon_command(f"/mute {name}")
@@ -125,6 +134,7 @@ class PlayerManagementCog(commands.Cog):
         logger.info(f"Player {name} muted by {ctx.author}")
 
     @commands.hybrid_command(name='unmute', description='Unmute a player on the server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @commands.guild_only()
     async def unmute(self, ctx, name: str):
         response = await self.send_rcon_command(f"/unmute {name}")

@@ -158,6 +158,7 @@ class ModsCog(commands.Cog):
             return False        
 
     @app_commands.command(name="mods", description="Manage mods using a dropdown menu")
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def mods(self, interaction: discord.Interaction):
         mods_list = self.get_installed_mods()
 

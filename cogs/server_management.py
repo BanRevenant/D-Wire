@@ -78,6 +78,7 @@ class ServerManagementCog(commands.Cog):
                 logger.error(f"Failed to rename verbose log file: {str(e)}")
 
     @app_commands.command(name='startserver', description='Start the Factorio server with optional configuration')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @app_commands.describe(port='Port number for the server (default: config value)')
     @app_commands.describe(save_file='Specific save file to load (default: latest save)')
     async def startserver(self, interaction: discord.Interaction, port: int = None, save_file: str = None):
@@ -86,12 +87,14 @@ class ServerManagementCog(commands.Cog):
         await interaction.followup.send(response)  # Using followup to send response after deferring
 
     @app_commands.command(name='stopserver', description='Stop the Factorio server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def stopserver(self, interaction: discord.Interaction):
         await interaction.response.defer()  # Deferring to allow time for processing
         response = await self.stop_server()
         await interaction.followup.send(response)  # Using followup to send response after deferring
 
     @app_commands.command(name='restartserver', description='Restart the Factorio server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def restartserver(self, interaction: discord.Interaction):
         await interaction.response.defer()  # Deferring to allow time for processing
         response = await self.restart_server()

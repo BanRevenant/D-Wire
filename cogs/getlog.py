@@ -16,6 +16,7 @@ class GetLogCog(commands.Cog):
         logger.info("GetLogCog initialized")
 
     @app_commands.command(name='verbose', description='Upload the Factorio verbose log file')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)
     async def verbose(self, interaction: discord.Interaction):
         logger.info(f"User {interaction.user.name} requested verbose log file")
         if os.path.isfile(self.log_file):

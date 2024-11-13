@@ -69,7 +69,7 @@ class UpdateCog(commands.Cog):
                 self.rcon_client = None
 
     async def check_version(self):
-        url = "https://www.factorio.com/get-download/latest/headless/linux64"
+        url = "https://www.factorio.com/get-download/stable/headless/linux64"
         async with aiohttp.ClientSession() as session:
             async with session.head(url) as response:
                 return response.headers.get("Last-Modified")
@@ -203,7 +203,7 @@ class UpdateCog(commands.Cog):
                 embed.add_field(**field)
             await message.edit(embed=embed)
 
-            download_url = 'https://www.factorio.com/get-download/latest/headless/linux64'
+            download_url = 'https://www.factorio.com/get-download/stable/headless/linux64'
             async with aiohttp.ClientSession() as session:
                 async with session.get(download_url) as response:
                     if response.status == 200:
@@ -281,7 +281,7 @@ class UpdateCog(commands.Cog):
         return message
 
     @app_commands.command(name='testupdate', description='Test the automatic update process')
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def testupdate(self, interaction: discord.Interaction):
         """Test the automatic update process"""
         await interaction.response.defer()
@@ -289,7 +289,7 @@ class UpdateCog(commands.Cog):
         await self.perform_update_sequence(interaction)
 
     @app_commands.command(name='update', description='Update the Factorio server to the latest version')
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def update(self, interaction: discord.Interaction):
         await interaction.response.defer()
         logger.info(f"Update command initiated by {interaction.user.name}")

@@ -16,7 +16,7 @@ class RebootCog(commands.Cog):
         logger.info("RebootCog initialized")
 
     @app_commands.command(name="discordrestart", description="Restart the Discord bot")
-    @app_commands.checks.has_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)
     async def discordrestart(self, interaction: discord.Interaction):
         logger.info(f"Discord bot restart initiated by {interaction.user.name}")
         await interaction.response.send_message("Restarting the Discord bot...")

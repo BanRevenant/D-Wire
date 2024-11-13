@@ -12,17 +12,46 @@ class ShutdownCog(commands.Cog):
         logger.info("ShutdownCog initialized")
 
     @app_commands.command(name="shutdown", description="Terminate the running Factorio Server Manager Discord Bot")
-    async def shutdown(self, interaction: discord.Interaction):
-        user = interaction.user
-        await interaction.response.send_message(f"{user.mention}, shutting down the bot...")  # Mention the user
-        logger.info(f"Shutdown command used by {user} (User ID: {user.id}). Bot is shutting down.")
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
+    @app_commands.describe(reason="Optional reason for shutting down the bot")
+    async def shutdown(self, interaction: discord.Interaction, reason: str = None):
+        """
+        Shuts down the bot. Only administrators can use this command.
+        Optional: Provide a reason for the shutdown.
+        """
+        shutdown_message = f"💤 {interaction.user.mention} initiated bot shutdown"
+        if reason:
+            shutdown_message += f"\nReason: {reason}"
+        
+        logger.info(f"Shutdown command used by {interaction.user} (ID: {interaction.user.id})")
+        if reason:
+            logger.info(f"Shutdown reason: {reason}")
 
-        await asyncio.sleep(2)  # Wait for the message to be sent before shutting down
-        await self.bot.close()  # Shutdown the bot
+        # Send shutdown message
+        await interaction.response.send_message(shutdown_message)
+        
+        # Wait briefly to ensure message is sent
+        await asyncio.sleep(2)
+        
+        # Shut down the bot
+        await self.bot.close()
+
+    # Error handler for permission check failures
+    @shutdown.error
+    async def shutdown_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message(
+                "❌ You need administrator permissions to shut down the bot.", 
+                ephemeral=True  # Only the command user sees this message
+            )
+            logger.warning(f"Unauthorized shutdown attempt by {interaction.user} (ID: {interaction.user.id})")
+        else:
+            await interaction.response.send_message(
+                "❌ An error occurred while processing the command.", 
+                ephemeral=True
+            )
+            logger.error(f"Error in shutdown command: {str(error)}")
 
 async def setup(bot):
-    if bot.get_cog("ShutdownCog") is None:
-        await bot.add_cog(ShutdownCog(bot))
-        logger.info("ShutdownCog added to bot")
-    else:
-        logger.warning("ShutdownCog is already loaded")
+    await bot.add_cog(ShutdownCog(bot))
+    logger.info("ShutdownCog added to bot")

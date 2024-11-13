@@ -16,6 +16,7 @@ class SaveCog(commands.Cog):
         logger.info("SaveCog initialized")
 
     @app_commands.command(name='save', description='Upload a save file to the Factorio server')
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)
     async def upload_save(self, interaction: discord.Interaction, file: discord.Attachment):
         """Upload a save file to the Factorio server."""
         if file.filename.endswith('.zip'):
