@@ -16,7 +16,7 @@ end
 script.on_event(defines.events.on_player_left_game, function(event)
     local player = game.players[event.player_index]
     if player then
-        game.print(get_formatted_time() .. " [LEAVE] " .. player.name .. " left the game")
+        print(get_formatted_time() .. " [LEAVE] " .. player.name .. " left the game")
     end
 end)
 
@@ -24,7 +24,7 @@ end)
 script.on_event(defines.events.on_research_finished, function(event)
     if event and event.research then
         local research = event.research
-        game.print(get_formatted_time() .. " [MSG] Research " .. research.name .. " completed.")
+        print(get_formatted_time() .. " [MSG] Research " .. research.name .. " completed.")
     end
 end)
 
@@ -35,7 +35,7 @@ script.on_event(defines.events.on_pre_player_mined_item, function(event)
         local obj = event.entity
         if obj and obj.valid and player and player.valid then
             local position = obj.position
-            game.print(get_formatted_time() .. " [ACT] " .. player.name .. " mined " .. obj.name .. 
+            print(get_formatted_time() .. " [ACT] " .. player.name .. " mined " .. obj.name .. 
                       " [gps=" .. position.x .. "," .. position.y .. "]")
         end
     end
@@ -49,7 +49,7 @@ script.on_event(defines.events.on_built_entity, function(event)
         if obj.name ~= "entity-ghost" and 
            obj.name ~= "tile-ghost" and 
            obj.name ~= "tile" then
-            game.print(get_formatted_time() .. " [ACT] " .. player.name .. " placed " .. obj.name)
+            print(get_formatted_time() .. " [ACT] " .. player.name .. " placed " .. obj.name)
         end
     end
 end)
@@ -58,7 +58,7 @@ end)
 script.on_event(defines.events.on_player_joined_game, function(event)
     local player = game.players[event.player_index]
     if player then
-        game.print(get_formatted_time() .. " [JOIN] " .. player.name .. " joined the game")
+        print(get_formatted_time() .. " [JOIN] " .. player.name .. " joined the game")
     end
 end)
 
@@ -69,10 +69,10 @@ script.on_event(defines.events.on_player_died, function(event)
     
     if player then
         if cause then
-            game.print(get_formatted_time() .. " [MSG] " .. player.name .. " was killed by " .. cause.name .. " at [gps=" ..
+            print(get_formatted_time() .. " [MSG] " .. player.name .. " was killed by " .. cause.name .. " at [gps=" ..
                       player.position.x .. "," .. player.position.y .. "]")
         else
-            game.print(get_formatted_time() .. " [MSG] " .. player.name .. " died at [gps=" ..
+            print(get_formatted_time() .. " [MSG] " .. player.name .. " died at [gps=" ..
                       player.position.x .. "," .. player.position.y .. "]")
         end
     end
@@ -83,7 +83,18 @@ script.on_event(defines.events.on_console_chat, function(event)
     if event.player_index then
         local player = game.players[event.player_index]
         if player and event.message then
-            game.print(get_formatted_time() .. " [CHAT] " .. player.name .. ": " .. event.message)
+            print(get_formatted_time() .. " [CHAT] " .. player.name .. ": " .. event.message)
         end
+    end
+end)
+
+-- logs online players every minute
+script.on_event(defines.events.on_tick, function(event)
+    if event.tick % (60 * 60) == 0 then  -- Run once per minute (60 ticks/second)
+        local players = {}
+        for _, player in pairs(game.connected_players) do
+            table.insert(players, player.name)
+        end
+        print("[ONLINE2] " .. table.concat(players, ", "))
     end
 end)
