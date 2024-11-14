@@ -1,15 +1,15 @@
 -- logging.lua - Factorio logging module with standardized output patterns
 
--- Helper function for timestamp format YYYY-MM-DD HH:MM:SS
+-- Helper function for timestamp format
 local function get_formatted_time()
-    -- Convert game.tick to seconds
+    -- Use game.tick to calculate hours, minutes, seconds
     local total_seconds = game.tick / 60
+    local hours = math.floor(total_seconds / 3600)
+    local minutes = math.floor((total_seconds % 3600) / 60)
+    local seconds = math.floor(total_seconds % 60)
     
-    -- Get the starting time of the game and add elapsed seconds
-    local current_time = os.time() - (game.tick_count / 60) + total_seconds
-    
-    -- Format as YYYY-MM-DD HH:MM:SS
-    return os.date("%Y-%m-%d %H:%M:%S", math.floor(current_time))
+    -- Format as HH:MM:SS
+    return string.format("%02d:%02d:%02d", hours, minutes, seconds)
 end
 
 -- Player disconnect/leave event
@@ -24,7 +24,7 @@ end)
 script.on_event(defines.events.on_research_finished, function(event)
     if event and event.research then
         local research = event.research
-        game.print("[MSG] Research " .. research.name .. " completed.")
+        game.print(get_formatted_time() .. " [MSG] Research " .. research.name .. " completed.")
     end
 end)
 
@@ -35,7 +35,7 @@ script.on_event(defines.events.on_pre_player_mined_item, function(event)
         local obj = event.entity
         if obj and obj.valid and player and player.valid then
             local position = obj.position
-            game.print("[ACT] " .. player.name .. " mined " .. obj.name .. 
+            game.print(get_formatted_time() .. " [ACT] " .. player.name .. " mined " .. obj.name .. 
                       " [gps=" .. position.x .. "," .. position.y .. "]")
         end
     end
@@ -49,7 +49,7 @@ script.on_event(defines.events.on_built_entity, function(event)
         if obj.name ~= "entity-ghost" and 
            obj.name ~= "tile-ghost" and 
            obj.name ~= "tile" then
-            game.print("[ACT] " .. player.name .. " placed " .. obj.name)
+            game.print(get_formatted_time() .. " [ACT] " .. player.name .. " placed " .. obj.name)
         end
     end
 end)
@@ -69,16 +69,16 @@ script.on_event(defines.events.on_player_died, function(event)
     
     if player then
         if cause then
-            game.print("[MSG] " .. player.name .. " was killed by " .. cause.name .. " at [gps=" ..
+            game.print(get_formatted_time() .. " [MSG] " .. player.name .. " was killed by " .. cause.name .. " at [gps=" ..
                       player.position.x .. "," .. player.position.y .. "]")
         else
-            game.print("[MSG] " .. player.name .. " died at [gps=" ..
+            game.print(get_formatted_time() .. " [MSG] " .. player.name .. " died at [gps=" ..
                       player.position.x .. "," .. player.position.y .. "]")
         end
     end
 end)
 
--- Chat event (requires additional setup to capture chat)
+-- Chat event
 script.on_event(defines.events.on_console_chat, function(event)
     if event.player_index then
         local player = game.players[event.player_index]
