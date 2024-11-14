@@ -6,6 +6,7 @@ import json
 import asyncio
 import traceback
 import logging
+from typing import Optional
 from config_manager import ConfigManager
 from logger import setup_logger
 
@@ -14,6 +15,39 @@ config_manager = ConfigManager('config.json')
 
 # Set up logger
 logger = setup_logger('bot', '/opt/bot/logs/bot.log')
+
+class AutoReconnectBot(commands.Bot):
+    async def setup_hook(self):
+        self.reconnect_attempts = 0
+        self.max_reconnect_attempts = 5
+        self.reconnect_delay = 5  # Initial delay in seconds
+
+    async def close(self):
+        self.reconnect_attempts = 0
+        await super().close()
+
+    async def connect(self, *, reconnect=True):
+        while True:
+            try:
+                await super().connect(reconnect=True)
+                self.reconnect_attempts = 0
+                self.reconnect_delay = 5
+                break
+            except discord.GatewayNotFound:
+                logger.error("Discord gateway not found. Retrying...")
+            except discord.ConnectionClosed as e:
+                if e.code == 1000:  # Normal closure
+                    self.reconnect_attempts += 1
+                    if self.reconnect_attempts >= self.max_reconnect_attempts:
+                        logger.error(f"Failed to reconnect after {self.max_reconnect_attempts} attempts")
+                        raise
+                    
+                    logger.warning(f"Connection closed normally. Attempting reconnect #{self.reconnect_attempts}")
+                    await asyncio.sleep(self.reconnect_delay)
+                    self.reconnect_delay = min(300, self.reconnect_delay * 2)  # Exponential backoff, max 5 minutes
+                else:
+                    logger.error(f"Connection closed with code {e.code}")
+                    raise
 
 intents = discord.Intents.all()
 intents.messages = True
@@ -39,7 +73,7 @@ async def load_cogs():
                     logger.info(f'Loaded {filename}')
                 except Exception as e:
                     logger.error(f'Failed to load {filename}: {e}')
-                    await report_error(e)
+                    await report_error(e, f'Failed to load {filename}')
             else:
                 logger.info(f'Skipped loading {filename} (disabled)')
 
@@ -47,6 +81,17 @@ async def load_cogs():
 async def on_ready():
     logger.info(f'Logged in as {bot.user.name}')
     logger.info('Bot is ready to process requests.')
+    
+    # Store error channel for future use
+    error_channel_id = config_manager.get('discord.error_channel_id')
+    if error_channel_id:
+        bot.error_channel = bot.get_channel(int(error_channel_id))
+        if bot.error_channel:
+            logger.info(f'Found error channel: {bot.error_channel.name}')
+        else:
+            logger.error(f'Could not find error channel with ID: {error_channel_id}')
+    else:
+        logger.error('No error channel ID configured')
 
     # Sync the commands globally
     await bot.tree.sync()
@@ -54,16 +99,16 @@ async def on_ready():
 
 @bot.event
 async def on_command_error(ctx, error):
-    await report_error(error)
+    await report_error(error, "Command Error")
 
 @bot.event
 async def on_application_command_error(interaction, error):
-    await report_error(error)
+    await report_error(error, "Application Command Error")
 
-async def report_error(error):
-    error_message = f"An error occurred:\n```{str(error)}```"
+async def report_error(error, context="Error"):
+    error_message = f"{context}:\n```{str(error)}```"
     traceback_message = f"```{traceback.format_exc()}```"
-    logger.error(f'Error occurred: {error}')
+    logger.error(f'{context}: {error}')
     logger.error(traceback_message)
 
     show_button = discord.ui.Button(label="Show Details", style=discord.ButtonStyle.primary)
@@ -82,18 +127,16 @@ async def report_error(error):
     view.add_item(show_button)
     view.add_item(ignore_button)
 
-    embed = discord.Embed(title="Error Occurred", description=error_message, color=discord.Color.red())
+    embed = discord.Embed(title=context, description=error_message, color=discord.Color.red())
 
-    error_channel_id = config_manager.get('discord.error_channel_id')
-    error_channel = bot.get_channel(int(error_channel_id))
-
-    if error_channel:
+    # Use the stored error channel from on_ready
+    if hasattr(bot, 'error_channel') and bot.error_channel:
         try:
-            await error_channel.send(embed=embed, view=view)
+            await bot.error_channel.send(embed=embed, view=view)
         except discord.HTTPException as e:
-            logger.error(f'Failed to send error message to channel: {error_channel.name}', exc_info=True)
+            logger.error(f'Failed to send error message to channel: {bot.error_channel.name}', exc_info=True)
     else:
-        logger.error(f"Error channel not found. Please set a valid error_channel_id in the config.")
+        logger.error(f"Error channel not found or not properly initialized. Please check your configuration.")
 
 @bot.tree.command(name="debug", description="Enable, disable, or test debug mode")
 @app_commands.describe(mode='Select the debug mode option')
