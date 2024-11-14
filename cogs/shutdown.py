@@ -12,6 +12,7 @@ class ShutdownCog(commands.Cog):
         logger.info("ShutdownCog initialized")
 
     @app_commands.command(name="shutdown", description="Terminate the running Factorio Server Manager Discord Bot")
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     @app_commands.describe(reason="Optional reason for shutting down the bot")
     async def shutdown(self, interaction: discord.Interaction, reason: str = None):

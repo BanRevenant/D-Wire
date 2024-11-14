@@ -287,6 +287,7 @@ class UpdateCog(commands.Cog):
         return message
 
     @app_commands.command(name='testupdate', description='Test the automatic update process')
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def testupdate(self, interaction: discord.Interaction):
         """Test the automatic update process"""
@@ -295,6 +296,7 @@ class UpdateCog(commands.Cog):
         await self.perform_update_sequence(interaction)
 
     @app_commands.command(name='update', description='Update the Factorio server to the latest version')
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def update(self, interaction: discord.Interaction):
         await interaction.response.defer()

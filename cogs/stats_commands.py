@@ -249,7 +249,8 @@ class StatsCog(commands.Cog):
                     await channel.send(embed=embed)
 
     @app_commands.command(name='wipedata', description='Wipe player statistics data')
-    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)
     async def wipedata(self, interaction: discord.Interaction):
         success = self.stats_logger.wipe_database()
         if success:

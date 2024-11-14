@@ -294,6 +294,8 @@ class SettingsCog(commands.Cog):
         logger.info("SettingsCog initialized")
 
     @app_commands.command(name='settings', description='Modify Factorio server settings.')
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def settings(self, interaction: discord.Interaction):
         view = discord.ui.View()
         view.add_item(SettingsDropdown())

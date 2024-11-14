@@ -147,6 +147,7 @@ class ModInterfaceCog(commands.Cog):
             return False
 
     @app_commands.command(name="update_mods", description="Check for and install mod updates")
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def update_mods(self, interaction: discord.Interaction):
         await interaction.response.defer()
@@ -310,6 +311,7 @@ class ModInterfaceCog(commands.Cog):
         )
 
     @app_commands.command(name="sync_mods", description="Scan and sync installed mods with the tracking system")
+    @app_commands.default_permissions(administrator=True, moderate_members=True)
     @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
     async def sync_mods(self, interaction: discord.Interaction):
         await interaction.response.defer()
