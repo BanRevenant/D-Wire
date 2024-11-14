@@ -160,16 +160,32 @@ class ServerManagementCog(commands.Cog):
 
         try:
             process = psutil.Process(self.server_pid)
+            
+            # First attempt graceful shutdown
+            logger.info("Initiating graceful server shutdown")
             for proc in process.children(recursive=True):
-                proc.kill()
-            process.kill()
+                proc.terminate()
+            process.terminate()
+            
+            # Wait up to 30 seconds for the process to terminate
+            try:
+                process.wait(timeout=30)
+            except psutil.TimeoutExpired:
+                logger.warning("Server didn't shutdown gracefully, forcing termination")
+                # If graceful shutdown fails, then force kill
+                for proc in process.children(recursive=True):
+                    proc.kill()
+                process.kill()
+            
             self.server_pid = None
             self.server_command = None
-            os.remove(SERVER_INFO_FILE)
+            if os.path.exists(SERVER_INFO_FILE):
+                os.remove(SERVER_INFO_FILE)
             logger.info("Server stopped successfully")
 
             await asyncio.sleep(5)
 
+            # Cleanup any remaining processes if necessary
             if sys.platform == 'win32':
                 subprocess.call(['taskkill', '/F', '/IM', 'factorio.exe'])
             else:
