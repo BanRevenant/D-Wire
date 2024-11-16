@@ -244,14 +244,13 @@ class InstallCog(commands.Cog):
                 total_members = len(members)
                 
                 for i, member in enumerate(members, 1):
-                    # Skip the parent directory
-                    if member.name == 'factorio/':
+                    # Extract directly to the target directory without the extra factorio folder
+                    if not member.name.startswith('factorio/'):
                         continue
-                        
-                    # Remove the 'factorio/' prefix from paths
-                    if member.name.startswith('factorio/'):
-                        member.name = member.name[9:]  # Remove 'factorio/'
-                        
+                    
+                    # Modify the path to remove the 'factorio/' prefix entirely
+                    member.name = member.name[8:]  # Remove 'factorio/' completely
+                    
                     if member.name:  # Only extract if there's a name left
                         tar.extract(member, extract_path)
                         

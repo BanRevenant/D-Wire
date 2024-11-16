@@ -12,12 +12,24 @@ class ModTrackerCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config_manager = bot.config_manager
-        self.mod_path = self.config_manager.get('factorio_mod_portal.mod_path')
+        
+        # Get install location from config
+        install_location = self.config_manager.get('factorio_server.install_location')
+        if not install_location:
+            logger.warning("Factorio install location not set - mod tracking will be limited until server is installed")
+            self.mod_path = None
+            self.urls_file = None
+            self.mod_urls = {}
+            self.api_url = 'https://mods.factorio.com/api'
+            return
+            
+        # Setup paths using Factorio's standard structure
+        self.mod_path = os.path.join(install_location, "factorio", "mods")
         self.urls_file = os.path.join(self.mod_path, 'mod_urls.json')
         self.mod_urls: Dict[str, str] = {}
         self.api_url = 'https://mods.factorio.com/api'
         self._load_urls()
-        logger.info("ModTrackerCog initialized")
+        logger.info(f"ModTrackerCog initialized with mod_path: {self.mod_path}")
 
     def _load_urls(self) -> None:
         """Load the mod URLs from disk."""

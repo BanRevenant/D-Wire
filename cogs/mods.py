@@ -28,9 +28,15 @@ class ModsCog(commands.Cog):
         self.mod_portal_username = self.config_manager.get('factorio_mod_portal.username')
         self.mod_portal_token = self.config_manager.get('factorio_mod_portal.token')
         self.mod_portal_api_url = 'https://mods.factorio.com/api'
-        self.mod_path = self.config_manager.get('factorio_mod_portal.mod_path')
+        
+        # Get install location from config
+        install_location = self.config_manager.get('factorio_server.install_location')
+        if not install_location:
+            raise ValueError("Factorio install location not set in config")
+        
+        # Setup mod paths using Factorio's standard structure
+        self.mod_path = os.path.join(install_location, "factorio", "mods")
         self.mod_list_file = os.path.join(self.mod_path, 'mod-list.json')
-        logger.info("ModsCog initialized")
 
     async def get_mod_details(self, mod_name):
         """Retrieve mod details from the Factorio mod portal API."""
