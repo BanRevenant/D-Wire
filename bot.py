@@ -7,14 +7,56 @@ import asyncio
 import traceback
 import logging
 from typing import Optional
+import time
 from config_manager import ConfigManager
 from logger import setup_logger
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
 
 # Initialize ConfigManager
 config_manager = ConfigManager('config.json')
 
 # Set up logger
-logger = setup_logger('bot', '/opt/bot/logs/bot.log')
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+logger = setup_logger('bot', os.path.join(log_dir, 'bot.log'))
+
+class CogWatcher(FileSystemEventHandler):
+    def __init__(self, bot):
+        self.bot = bot
+        self.last_modified = {}
+        
+    def should_reload(self, path):
+        # Prevent reloading too frequently (debounce)
+        current_time = time.time()
+        if path in self.last_modified:
+            if current_time - self.last_modified[path] < 1:  # 1 second debounce
+                return False
+        self.last_modified[path] = current_time
+        return True
+
+    async def reload_cog(self, path):
+        try:
+            relative_path = os.path.relpath(path)
+            if relative_path.startswith('cogs/') and relative_path.endswith('.py'):
+                cog_name = relative_path[:-3].replace('/', '.')  # Remove .py and convert path to module format
+                logger.info(f"Reloading {cog_name}...")
+                
+                try:
+                    await self.bot.reload_extension(cog_name)
+                    logger.info(f"Successfully reloaded {cog_name}")
+                except Exception as e:
+                    logger.error(f"Failed to reload {cog_name}: {e}")
+        except Exception as e:
+            logger.error(f"Error in reload_cog: {e}")
+
+    def on_modified(self, event):
+        if event.src_path.endswith('.py') and 'cogs' in event.src_path:
+            if self.should_reload(event.src_path):
+                asyncio.run_coroutine_threadsafe(
+                    self.reload_cog(event.src_path), 
+                    self.bot.loop
+                )
 
 class AutoReconnectBot(commands.Bot):
     async def setup_hook(self):
@@ -630,5 +672,15 @@ async def on_guild_channel_delete(channel):
 
 
 
-asyncio.run(load_cogs())
-bot.run(config_manager.get('discord.bot_token'))
+# Set up cog watcher
+cog_watcher = CogWatcher(bot)
+observer = Observer()
+observer.schedule(cog_watcher, path='cogs', recursive=False)
+observer.start()
+
+try:
+    asyncio.run(load_cogs())
+    bot.run(config_manager.get('discord.bot_token'))
+finally:
+    observer.stop()
+    observer.join()

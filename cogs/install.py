@@ -232,13 +232,30 @@ class InstallCog(commands.Cog):
             )
             await message.edit(embed=embed)
 
+            # Clear the destination directory if it exists
+            if os.path.exists(extract_path):
+                import shutil
+                shutil.rmtree(extract_path)
+                
+            os.makedirs(extract_path, exist_ok=True)
+
             with tarfile.open(tar_path, 'r:xz') as tar:
-                total_members = len(tar.getmembers())
-                for i, member in enumerate(tar.getmembers(), 1):
-                    tar.extract(member, extract_path)
+                members = tar.getmembers()
+                total_members = len(members)
+                
+                for i, member in enumerate(members, 1):
+                    # Skip the parent directory
+                    if member.name == 'factorio/':
+                        continue
+                        
+                    # Remove the 'factorio/' prefix from paths
+                    if member.name.startswith('factorio/'):
+                        member.name = member.name[9:]  # Remove 'factorio/'
+                        
+                    if member.name:  # Only extract if there's a name left
+                        tar.extract(member, extract_path)
+                        
                     current_time = asyncio.get_event_loop().time()
-                    
-                    # Update every 50 files or on completion, but not more often than every second
                     if (i % 50 == 0 or i == total_members) and (current_time - last_update_time >= 1.0):
                         progress = (i / total_members) * 100
                         embed.description = f"Extracted {i} / {total_members} files ({progress:.1f}%)"
@@ -320,20 +337,12 @@ class InstallCog(commands.Cog):
     @app_commands.command(name="install", description="Install the Factorio server")
     @app_commands.default_permissions(administrator=True)
     async def install(self, interaction: discord.Interaction):
-        """Install the Factorio server."""
-        # Check if user has required role
+        # Check if user is owner or has required role
         required_roles = ['Factorio-Admin', 'Factorio-Mod']
-        if not any(role.name in required_roles for role in interaction.user.roles):
+        if not (str(interaction.user.id) == self.bot.config_manager.get('discord.owner_id') or 
+                any(role.name in required_roles for role in interaction.user.roles)):
             await interaction.response.send_message(
-                "You need the Factorio-Admin or Factorio-Mod role to use this command.",
-                ephemeral=True
-            )
-            return
-
-        # Check if already installing
-        if self.installing:
-            await interaction.response.send_message(
-                "An installation is already in progress.",
+                "You need to be the bot owner or have the Factorio-Admin/Mod role to use this command.",
                 ephemeral=True
             )
             return
@@ -350,8 +359,13 @@ class InstallCog(commands.Cog):
                 )
                 return
 
-            # Get install location from config
-            install_path = self.config_manager.get('factorio_server.factorio_install_location', '/opt/')
+            # Get bot's directory and set install location
+            bot_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            install_path = os.path.join(bot_dir, "factorio")
+            
+            # Update config with new install location
+            self.config_manager.set('factorio_server.install_location', install_path)
+            self.config_manager.save()
 
             # Create and send location confirmation view
             location_view = ConfirmLocationView(install_path)
@@ -418,7 +432,8 @@ class InstallCog(commands.Cog):
             version = versions[version_view.selected_version]
             
             # Download
-            download_path = os.path.join(install_path, f"factorio_{version}.tar.xz")
+            bot_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            download_path = os.path.join(bot_dir, f"factorio_{version}.tar.xz")
             if not await self.download_with_progress(selected_url, download_path, interaction.original_response):
                 embed = discord.Embed(
                     title="Installation Error",
@@ -433,6 +448,18 @@ class InstallCog(commands.Cog):
                 embed = discord.Embed(
                     title="Installation Error",
                     description="Failed to extract Factorio server.",
+                    color=discord.Color.red()
+                )
+                await interaction.edit_original_response(embed=embed, view=None)
+                return
+            
+            # Create server settings in the installed factorio directory
+            config_path = os.path.join(install_path, "config/server-settings.json")
+            logger.info(f"Creating server settings at: {config_path}")
+            if not await self.create_server_settings(config_path, interaction.original_response):
+                embed = discord.Embed(
+                    title="Installation Error",
+                    description="Failed to create server settings.",
                     color=discord.Color.red()
                 )
                 await interaction.edit_original_response(embed=embed, view=None)

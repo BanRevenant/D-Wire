@@ -76,11 +76,21 @@ class ReadLogCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config_manager = bot.config_manager
-        self.log_file = self.config_manager.get('factorio_server.server_log_file')
+        # Get base path and construct log file path
+        base_path = self.config_manager.get('factorio_server.install_location')
+        self.log_file = os.path.join(base_path, "logs/verbose.log")
+        
         self.parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.position_file = os.path.join(self.parent_dir, "last_position.txt")
         self.location_prefs_file = os.path.join(self.parent_dir, "location_prefs.json")
         self.geo_reader = load_geo_database(self.config_manager)
+        
+        # Create logs directory if it doesn't exist
+        os.makedirs(os.path.dirname(self.log_file), exist_ok=True)
+        
+        # Create empty log file if it doesn't exist
+        if not os.path.exists(self.log_file):
+            open(self.log_file, 'a').close()
         
         # Initialize last_position
         try:
@@ -244,8 +254,7 @@ class ReadLogCog(commands.Cog):
     async def check_log(self):
         try:
             if not os.path.exists(self.log_file):
-                logger.warning(f"Log file does not exist: {self.log_file}")
-                return
+                return  # Just return if the file doesn't exist yet
 
             if os.path.getsize(self.log_file) < self.last_position:
                 logger.info("Log file has been reset. Starting from the beginning.")

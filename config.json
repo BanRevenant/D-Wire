@@ -10,28 +10,20 @@
     "factorio_user_id": "auto-generated-user-role-id",
     
     "factorio_general_id": "auto-generated-general-channel-id",
-    "factorio_admin_id": "auto-generated-admin-channel-id"
+    "factorio_admin_id": "auto-generated-admin-channel-id",
+    
+    "show_locations": true
   },
   "factorio_server": {
-    "executable": "/opt/factorio/bin/x64/factorio",
-    "factorio_install_location": "/opt/",
+    "install_location": "/opt/factorio",
     "default_port": 13337,
     "default_bind_address": "0.0.0.0",
     "default_rcon_port": 27015,
-    "default_rcon_password": "your-rcon-password",
-    "server_settings_file": "/opt/factorio/config/server-settings.json",
-    "server_adminlist_file": "/opt/factorio/config/server-adminlist.json",
-    "saves_directory": "/opt/factorio/saves",
-    "mods_directory": "/opt/factorio/mods",
-    "config_directory": "/opt/factorio/config",
-    "rcon_host": "localhost",
-    "server_log_file": "/opt/factorio/verbose.log",
-    "verbose_log_file": "/opt/factorio/verbose.log"
+    "default_rcon_password": "your-rcon-password"
   },
   "factorio_mod_portal": {
     "username": "your-username",
-    "token": "your-token",
-    "mod_path": "/opt/factorio/mods"
+    "token": "your-token"
   },
   "disabled_cogs": [],
   "debug_mode": false

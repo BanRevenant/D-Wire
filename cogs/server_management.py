@@ -25,6 +25,10 @@ def setsid():
     else:
         os.setsid()
 
+def get_factorio_path(base_path, sub_path):
+    """Get full path for Factorio files based on install location"""
+    return os.path.join(base_path, sub_path)
+
 class ServerManagementCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -109,17 +113,26 @@ class ServerManagementCog(commands.Cog):
             return "The server is already running."
 
         try:
-            self.rename_verbose_log_file()
+            base_path = self.config_manager.get('factorio_server.install_location')
+        
+            # Set up paths
+            factorio_exe = get_factorio_path(base_path, "bin/x64/factorio")
+            server_settings = get_factorio_path(base_path, "config/server-settings.json")
+            server_adminlist = get_factorio_path(base_path, "config/server-adminlist.json")
+            verbose_log_file = get_factorio_path(base_path, "logs/verbose.log")
 
-            # Server setup details
-            factorio_exe = self.config_manager.get('factorio_server.executable')
+            # Get server configuration from config
             default_port = self.config_manager.get('factorio_server.default_port')
             bind_address = self.config_manager.get('factorio_server.default_bind_address')
             rcon_port = self.config_manager.get('factorio_server.default_rcon_port')
             rcon_password = self.config_manager.get('factorio_server.default_rcon_password')
-            server_settings = self.config_manager.get('factorio_server.server_settings_file')
-            server_adminlist = self.config_manager.get('factorio_server.server_adminlist_file')
-            verbose_log_file = self.config_manager.get('factorio_server.verbose_log_file')
+            
+            # Create logs directory if it doesn't exist
+            os.makedirs(os.path.dirname(verbose_log_file), exist_ok=True)
+            
+            # Ensure the log file exists
+            if not os.path.exists(verbose_log_file):
+                open(verbose_log_file, 'a').close()
 
             command = [
                 factorio_exe,
@@ -163,8 +176,12 @@ class ServerManagementCog(commands.Cog):
             
             # First attempt graceful shutdown
             logger.info("Initiating graceful server shutdown")
-            for proc in process.children(recursive=True):
-                proc.terminate()
+            for child in process.children(recursive=True):
+                try:
+                    child.terminate()
+                except psutil.NoSuchProcess:
+                    pass
+                    
             process.terminate()
             
             # Wait up to 30 seconds for the process to terminate
@@ -172,11 +189,22 @@ class ServerManagementCog(commands.Cog):
                 process.wait(timeout=30)
             except psutil.TimeoutExpired:
                 logger.warning("Server didn't shutdown gracefully, forcing termination")
-                # If graceful shutdown fails, then force kill
-                for proc in process.children(recursive=True):
-                    proc.kill()
+                # Force kill if graceful shutdown fails
+                for child in process.children(recursive=True):
+                    try:
+                        child.kill()
+                    except psutil.NoSuchProcess:
+                        pass
                 process.kill()
             
+            # Clean up any remaining factorio processes
+            for proc in psutil.process_iter(['name', 'pid']):
+                try:
+                    if 'factorio' in proc.name().lower():
+                        proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
             self.server_pid = None
             self.server_command = None
             if os.path.exists(SERVER_INFO_FILE):
@@ -184,13 +212,6 @@ class ServerManagementCog(commands.Cog):
             logger.info("Server stopped successfully")
 
             await asyncio.sleep(5)
-
-            # Cleanup any remaining processes if necessary
-            if sys.platform == 'win32':
-                subprocess.call(['taskkill', '/F', '/IM', 'factorio.exe'])
-            else:
-                subprocess.call(['killall', '-9', 'factorio'])
-
             await self.update_bot_status()
             return "Server stopped successfully."
         except Exception as e:
