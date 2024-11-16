@@ -1,6 +1,6 @@
 import os
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import json
 import asyncio
@@ -48,12 +48,36 @@ class AutoReconnectBot(commands.Bot):
                 else:
                     logger.error(f"Connection closed with code {e.code}")
                     raise
+    async def track_role_assignment(self, member: discord.Member, role: discord.Role):
+        """Track when a role is assigned to a member"""
+        try:
+            assignments_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "role_assignments.json")
+            assignments = {}
+            
+            if os.path.exists(assignments_file):
+                with open(assignments_file, 'r') as f:
+                    assignments = json.load(f)
+            
+            # Add the member to the role's assignments
+            role_assignments = assignments.get(str(role.id), [])
+            if str(member.id) not in role_assignments:
+                role_assignments.append(str(member.id))
+                assignments[str(role.id)] = role_assignments
+                
+                with open(assignments_file, 'w') as f:
+                    json.dump(assignments, f, indent=2)
+                
+                logger.debug(f"Tracked role assignment: {role.name} -> {member.name}")
+            
+        except Exception as e:
+            logger.error(f"Error tracking role assignment: {str(e)}")            
 
+# Start the bot
 intents = discord.Intents.all()
 intents.messages = True
 intents.message_content = True
 
-bot = commands.Bot(command_prefix='/', intents=intents)
+bot = AutoReconnectBot(command_prefix='/', intents=intents)
 bot.config_manager = config_manager
 bot.logger = logger
 
@@ -63,6 +87,7 @@ else:
     logger.setLevel(logging.WARNING)
 
 async def load_cogs():
+    """Load all cogs from the cogs directory."""
     disabled_cogs = config_manager.get('disabled_cogs', [])
     for filename in os.listdir('./cogs'):
         if filename.endswith('.py'):
@@ -73,261 +98,537 @@ async def load_cogs():
                     logger.info(f'Loaded {filename}')
                 except Exception as e:
                     logger.error(f'Failed to load {filename}: {e}')
-                    await report_error(e, f'Failed to load {filename}')
+                    if hasattr(bot, 'error_channel'):
+                        await bot.error_channel.send(f'Failed to load {filename}: {e}')
             else:
                 logger.info(f'Skipped loading {filename} (disabled)')
 
+async def check_bot_permissions(guild):
+    """
+    Checks if the bot has all required permissions and proper role hierarchy.
+    Returns (bool, list of issues)
+    """
+    required_permissions = {
+        'manage_roles': 'Manage Roles',
+        'manage_channels': 'Manage Channels',
+        'view_channel': 'View Channels',
+        'send_messages': 'Send Messages',
+        'embed_links': 'Embed Links',
+        'read_message_history': 'Read Message History',
+        'manage_messages': 'Manage Messages',
+        'add_reactions': 'Add Reactions'
+    }
+    
+    issues = []
+    bot_member = guild.get_member(bot.user.id)
+    
+    # Check bot's permissions
+    missing_perms = []
+    for perm, perm_name in required_permissions.items():
+        if not getattr(bot_member.guild_permissions, perm):
+            missing_perms.append(perm_name)
+    
+    if missing_perms:
+        issues.append(f"Missing permissions: {', '.join(missing_perms)}")
+    
+    # Check if bot is administrator
+    if bot_member.guild_permissions.administrator:
+        # Bot is admin, no need for hierarchy checks
+        return len(issues) == 0, issues
+    
+    # Only check hierarchy if bot is not an administrator
+    if bot_member.top_role.position <= 1:
+        issues.append("Bot's role is too low in the hierarchy. Please move the bot's role higher.")
+    
+    # Only check managed roles if bot is not an administrator
+    managed_roles = [
+        role for role in guild.roles 
+        if role.name in ['Factorio-Admin', 'Factorio-Mod', 'Factorio-User']
+    ]
+    for role in managed_roles:
+        if role.position >= bot_member.top_role.position:
+            issues.append(f"Cannot manage '{role.name}' - bot's role must be higher in the hierarchy.")
+    
+    return len(issues) == 0, issues
+
+async def send_status_message(channel, title, description, color=discord.Color.blue()):
+    """Sends a formatted status message to the specified channel"""
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color
+    )
+    try:
+        await channel.send(embed=embed)
+    except discord.Forbidden:
+        logger.error(f"Cannot send messages to channel {channel.name}")
+    except Exception as e:
+        logger.error(f"Error sending status message: {str(e)}")
+
+async def restore_role_assignments(guild, old_role_id, new_role):
+    """Restores role assignments when a role is recreated"""
+    try:
+        # Load the role assignments file
+        assignments_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "role_assignments.json")
+        assignments = {}
+        
+        if os.path.exists(assignments_file):
+            with open(assignments_file, 'r') as f:
+                assignments = json.load(f)
+        
+        # Get the list of member IDs for the old role
+        member_ids = assignments.get(str(old_role_id), [])
+        
+        # Reassign the role to all previous members
+        success_count = 0
+        for member_id in member_ids:
+            member = guild.get_member(int(member_id))
+            if member:
+                try:
+                    await member.add_roles(new_role)
+                    success_count += 1
+                except Exception as e:
+                    logger.error(f"Failed to reassign role to member {member_id}: {str(e)}")
+        
+        # Update the assignments with the new role ID
+        assignments[str(new_role.id)] = member_ids
+        assignments.pop(str(old_role_id), None)
+        
+        # Save the updated assignments
+        with open(assignments_file, 'w') as f:
+            json.dump(assignments, f, indent=2)
+        
+        logger.info(f"Restored role assignments for {success_count}/{len(member_ids)} members")
+        
+    except Exception as e:
+        logger.error(f"Error restoring role assignments: {str(e)}")
+
+async def track_role_assignment(member, role):
+    """Tracks when a role is assigned to a member"""
+    try:
+        assignments_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "role_assignments.json")
+        assignments = {}
+        
+        if os.path.exists(assignments_file):
+            with open(assignments_file, 'r') as f:
+                assignments = json.load(f)
+        
+        # Add the member to the role's assignments
+        role_assignments = assignments.get(str(role.id), [])
+        if str(member.id) not in role_assignments:
+            role_assignments.append(str(member.id))
+            assignments[str(role.id)] = role_assignments
+            
+            with open(assignments_file, 'w') as f:
+                json.dump(assignments, f, indent=2)
+            
+            logger.debug(f"Tracked role assignment: {role.name} -> {member.name}")
+            
+    except Exception as e:
+        logger.error(f"Error tracking role assignment: {str(e)}")
+
+async def setup_roles(guild):
+    """
+    Sets up required roles for the bot in the specified guild.
+    Recreates missing roles and restores assignments if needed.
+    Returns a dictionary of role IDs.
+    """
+    roles = {
+        'factorio_admin': {
+            'name': 'Factorio-Admin',
+            'color': discord.Color.red(),
+            'permissions': discord.Permissions(
+                administrator=True,
+                manage_channels=True,
+                manage_messages=True,
+                manage_roles=True,
+                view_channel=True
+            ),
+            'position_shift': 3
+        },
+        'factorio_mod': {
+            'name': 'Factorio-Mod',
+            'color': discord.Color.blue(),
+            'permissions': discord.Permissions(
+                manage_messages=True,
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True
+            ),
+            'position_shift': 2
+        },
+        'factorio_user': {
+            'name': 'Factorio-User',
+            'color': discord.Color.green(),
+            'permissions': discord.Permissions(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True
+            ),
+            'position_shift': 1
+        }
+    }
+    
+    role_ids = {}
+    existing_roles = {}
+    
+    for role_key, config in roles.items():
+        should_create = True
+        role = None
+        old_role_id = None
+        
+        # Try to get role by stored ID
+        stored_role_id = bot.config_manager.get(f'discord.{role_key}_id')
+        if stored_role_id:
+            try:
+                role = guild.get_role(int(stored_role_id))
+                if role:
+                    should_create = False
+                    logger.info(f'Found existing role {role.name} by ID')
+                else:
+                    old_role_id = stored_role_id
+                    logger.warning(f'Stored role with ID {stored_role_id} not found, will recreate')
+            except ValueError:
+                # Invalid role ID in config, will create new role
+                logger.warning(f'Invalid role ID in config for {role_key}, will create new role')
+        
+        # If no role found by ID, check by name
+        if not role:
+            role = discord.utils.get(guild.roles, name=config['name'])
+            if role:
+                should_create = False
+                logger.info(f'Found existing role {role.name} by name')
+        
+        # Create role if it doesn't exist
+        if should_create:
+            try:
+                role = await guild.create_role(
+                    name=config['name'],
+                    color=config['color'],
+                    permissions=config['permissions'],
+                    reason="Factorio bot role setup"
+                )
+                logger.info(f'Created new role: {role.name}')
+                
+                # If we had an old role ID, restore assignments
+                if old_role_id and old_role_id.isdigit():
+                    await restore_role_assignments(guild, old_role_id, role)
+            except Exception as e:
+                logger.error(f'Failed to create role {config["name"]}: {e}')
+                continue
+        
+        # Store role for position adjustment
+        existing_roles[role_key] = role
+        role_ids[f"{role_key}_id"] = str(role.id)
+    
+    # Adjust role positions
+    try:
+        # Sort roles by position_shift
+        sorted_roles = sorted(
+            existing_roles.items(),
+            key=lambda x: roles[x[0]]['position_shift'],
+            reverse=True
+        )
+        
+        # Calculate positions
+        positions = {
+            role: min(
+                guild.me.top_role.position - 1,
+                guild.me.top_role.position - (len(sorted_roles) - idx)
+            )
+            for idx, (_, role) in enumerate(sorted_roles)
+        }
+        
+        # Update role positions
+        await guild.edit_role_positions(positions=positions)
+        logger.info('Role positions updated')
+    except Exception as e:
+        logger.error(f'Failed to adjust role positions: {e}')
+    
+    return role_ids
+
+async def setup_channels(guild):
+    """
+    Sets up required channels for the bot in the specified guild.
+    Automatically recreates deleted channels and verifies channel integrity.
+    Returns a dictionary of channel IDs.
+    """
+    # Define channel configurations
+    channels = {
+        'factorio_general': {
+            'name': 'factorio-general',
+            'topic': 'General Factorio discussion, commands, and game logs',
+            'category_name': 'Factorio',
+            'permissions': {
+                'view': True,  # Everyone can view
+                'admin_only': False
+            }
+        },
+        'factorio_admin': {
+            'name': 'factorio-admin',
+            'topic': 'Bot updates, errors, and administrative notifications',
+            'category_name': 'Factorio',
+            'permissions': {
+                'view': False,  # Admin only
+                'admin_only': True
+            }
+        }
+    }
+    
+    # Get or create Factorio category
+    category = discord.utils.get(guild.categories, name='Factorio')
+    if not category:
+        try:
+            category = await guild.create_category('Factorio')
+            logger.info('Created Factorio category')
+        except discord.Forbidden:
+            logger.error('Missing permissions to create category')
+            return {}
+        except Exception as e:
+            logger.error(f'Error creating category: {e}')
+            return {}
+    
+    # Get role IDs safely
+    admin_role = None
+    mod_role = None
+    user_role = None
+    
+    try:
+        admin_role_id = bot.config_manager.get('discord.factorio_admin_id')
+        if admin_role_id and admin_role_id.isdigit():
+            admin_role = guild.get_role(int(admin_role_id))
+            
+        mod_role_id = bot.config_manager.get('discord.factorio_mod_id')
+        if mod_role_id and mod_role_id.isdigit():
+            mod_role = guild.get_role(int(mod_role_id))
+            
+        user_role_id = bot.config_manager.get('discord.factorio_user_id')
+        if user_role_id and user_role_id.isdigit():
+            user_role = guild.get_role(int(user_role_id))
+    except Exception as e:
+        logger.error(f'Error getting roles: {e}')
+    
+    channel_ids = {}
+    
+    for channel_key, config in channels.items():
+        should_create = True
+        channel = None
+        
+        # First, try to get channel by stored ID
+        stored_channel_id = bot.config_manager.get(f'discord.{channel_key}_id')
+        if stored_channel_id:
+            try:
+                if stored_channel_id.isdigit():
+                    channel = guild.get_channel(int(stored_channel_id))
+                    if channel:
+                        should_create = False
+                        logger.info(f'Found existing channel {channel.name} by ID')
+            except Exception as e:
+                logger.warning(f'Error getting channel by ID {stored_channel_id}: {e}')
+        
+        # If no channel found by ID, check by name in category
+        if not channel:
+            channel = discord.utils.get(category.channels, name=config['name'])
+            if channel:
+                should_create = False
+                logger.info(f'Found existing channel {channel.name} by name')
+        
+        # Create channel if it doesn't exist or was deleted
+        if should_create:
+            try:
+                # Set up permissions
+                overwrites = {
+                    guild.default_role: discord.PermissionOverwrite(
+                        view_channel=False
+                    )
+                }
+                
+                if user_role:
+                    overwrites[user_role] = discord.PermissionOverwrite(
+                        view_channel=config['permissions']['view'],
+                        send_messages=True,
+                        read_message_history=True
+                    )
+                
+                # Add admin and mod role permissions
+                if admin_role:
+                    overwrites[admin_role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        manage_messages=True
+                    )
+                
+                if mod_role:
+                    overwrites[mod_role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        manage_messages=True
+                    )
+                
+                # Create the channel
+                channel = await guild.create_text_channel(
+                    name=config['name'],
+                    category=category,
+                    topic=config['topic'],
+                    overwrites=overwrites
+                )
+                logger.info(f'Created new channel: {channel.name}')
+                
+                # Send initialization message
+                try:
+                    await channel.send(f'Channel initialized: {config["topic"]}')
+                except Exception as e:
+                    logger.warning(f'Could not send initialization message: {e}')
+                
+            except discord.Forbidden:
+                logger.error(f'Missing permissions to create channel {config["name"]}')
+                continue
+            except Exception as e:
+                logger.error(f'Failed to create channel {config["name"]}: {e}')
+                continue
+        
+        # Store/update channel ID in config
+        channel_ids[f"{channel_key}_id"] = str(channel.id)
+    
+    return channel_ids
+
+
+# Event Handlers
 @bot.event
 async def on_ready():
     logger.info(f'Logged in as {bot.user.name}')
-    logger.info('Bot is ready to process requests.')
     
-    # Store error channel for future use
-    error_channel_id = config_manager.get('discord.error_channel_id')
-    if error_channel_id:
-        bot.error_channel = bot.get_channel(int(error_channel_id))
-        if bot.error_channel:
-            logger.info(f'Found error channel: {bot.error_channel.name}')
-        else:
-            logger.error(f'Could not find error channel with ID: {error_channel_id}')
-    else:
-        logger.error('No error channel ID configured')
-
-    # Sync the commands globally
-    await bot.tree.sync()
-    logger.info('Synced commands globally')
-
-@bot.event
-async def on_command_error(ctx, error):
-    await report_error(error, "Command Error")
-
-@bot.event
-async def on_application_command_error(interaction, error):
-    await report_error(error, "Application Command Error")
-
-async def report_error(error, context="Error"):
-    error_message = f"{context}:\n```{str(error)}```"
-    traceback_message = f"```{traceback.format_exc()}```"
-    logger.error(f'{context}: {error}')
-    logger.error(traceback_message)
-
-    show_button = discord.ui.Button(label="Show Details", style=discord.ButtonStyle.primary)
-    ignore_button = discord.ui.Button(label="Ignore", style=discord.ButtonStyle.secondary)
-
-    async def show_callback(interaction):
-        await interaction.response.edit_message(content=error_message + "\n\n" + traceback_message)
-
-    async def ignore_callback(interaction):
-        await interaction.response.edit_message(content="Error ignored.", embed=None, view=None)
-
-    show_button.callback = show_callback
-    ignore_button.callback = ignore_callback
-
-    view = discord.ui.View()
-    view.add_item(show_button)
-    view.add_item(ignore_button)
-
-    embed = discord.Embed(title=context, description=error_message, color=discord.Color.red())
-
-    # Use the stored error channel from on_ready
-    if hasattr(bot, 'error_channel') and bot.error_channel:
-        try:
-            await bot.error_channel.send(embed=embed, view=view)
-        except discord.HTTPException as e:
-            logger.error(f'Failed to send error message to channel: {bot.error_channel.name}', exc_info=True)
-    else:
-        logger.error(f"Error channel not found or not properly initialized. Please check your configuration.")
-
-@bot.tree.command(name="debug", description="Enable, disable, or test debug mode")
-@app_commands.describe(mode='Select the debug mode option')
-@app_commands.choices(mode=[
-    app_commands.Choice(name='Enable', value='enable'),
-    app_commands.Choice(name='Disable', value='disable'),
-    app_commands.Choice(name='Test', value='test')
-])
-@app_commands.default_permissions(administrator=True)
-async def debug(interaction: discord.Interaction, mode: app_commands.Choice[str]):
-    if mode.value == 'test':
-        try:
-            raise ValueError("This is a test exception")
-        except Exception as e:
-            await report_error(e)
-            await interaction.response.send_message(f"Test exception raised: {e}", ephemeral=True)
-    elif mode.value == 'enable':
-        bot.config_manager.config['debug_mode'] = True
-        logger.setLevel(logging.DEBUG)
-        logger.debug('Debug mode enabled')
-        await interaction.response.send_message("Debug mode enabled", ephemeral=True)
-    elif mode.value == 'disable':
-        bot.config_manager.config['debug_mode'] = False
-        logger.setLevel(logging.WARNING)
-        logger.debug('Debug mode disabled')
-        await interaction.response.send_message("Debug mode disabled", ephemeral=True)
-
-    with open('config.json', 'w') as f:
-        json.dump(bot.config_manager.config, f, indent=2)
-
-@bot.tree.command(name="manage_cogs", description="Manage cogs")
-@app_commands.default_permissions(administrator=True)
-async def manage_cogs(interaction: discord.Interaction):
-    cogs = [f[:-3] for f in os.listdir('./cogs') if f.endswith('.py')]
-    disabled_cogs = config_manager.get('disabled_cogs', [])
-
-    async def cog_callback(interaction: discord.Interaction, selected_cog: str):
-        await interaction.response.defer()
-
-        action = interaction.data['custom_id']
-
-        if action == 'enable':
-            if selected_cog in disabled_cogs:
-                disabled_cogs.remove(selected_cog)
-                config_manager.config['disabled_cogs'] = disabled_cogs
-                with open('config.json', 'w') as f:
-                    json.dump(config_manager.config, f, indent=2)
-                try:
-                    await bot.load_extension(f'cogs.{selected_cog}')
-                    logger.info(f'Enabled and loaded cog: {selected_cog}')
-                    await bot.tree.sync()
-                except Exception as e:
-                    await interaction.followup.send(f'Error enabling {selected_cog}: {e}', ephemeral=True)
-                    logger.error(f'Error enabling cog: {selected_cog}', exc_info=True)
-        elif action == 'disable':
-            if selected_cog not in disabled_cogs:
-                disabled_cogs.append(selected_cog)
-                config_manager.config['disabled_cogs'] = disabled_cogs
-                with open('config.json', 'w') as f:
-                    json.dump(config_manager.config, f, indent=2)
-                try:
-                    await bot.unload_extension(f'cogs.{selected_cog}')
-                    logger.info(f'Disabled and unloaded cog: {selected_cog}')
-                    await bot.tree.sync()
-                except Exception as e:
-                    await interaction.followup.send(f'Error disabling {selected_cog}: {e}', ephemeral=True)
-                    logger.error(f'Error disabling cog: {selected_cog}', exc_info=True)
-        elif action == 'reload':
-            try:
-                await bot.reload_extension(f'cogs.{selected_cog}')
-                logger.info(f'Reloaded cog: {selected_cog}')
-                await bot.tree.sync()
-            except Exception as e:
-                await interaction.followup.send(f'Error reloading {selected_cog}: {e}', ephemeral=True)
-                logger.error(f'Error reloading cog: {selected_cog}', exc_info=True)
-        elif action == 'remove':
-            try:
-                await bot.unload_extension(f'cogs.{selected_cog}')
-                logger.info(f'Unloaded cog: {selected_cog} before removal')
-                await bot.tree.sync()
-            except Exception as e:
-                await interaction.followup.send(f'Error unloading {selected_cog} before removal: {e}', ephemeral=True)
-                logger.error(f'Error unloading cog: {selected_cog} before removal', exc_info=True)
-            os.remove(f'./cogs/{selected_cog}.py')
-            logger.info(f'Removed cog: {selected_cog}')
-            await interaction.edit_original_response(content=f'Removed {selected_cog}', view=None)
-            return
-
-        await interaction.edit_original_response(
-            content=f"Selected {selected_cog}: {'Enabled' if selected_cog not in disabled_cogs else 'Disabled'}",
-            view=CogView(cogs, disabled_cogs, selected_cog)
-        )
-
-    class CogView(discord.ui.View):
-        def __init__(self, cogs, disabled_cogs, selected_cog=None):
-            super().__init__(timeout=60)
-            self.cogs = cogs
-            self.disabled_cogs = disabled_cogs
-            self.selected_cog = selected_cog
-            self.add_item(CogDropdown(cogs, disabled_cogs, selected_cog))
-            self.message = None
-
-        async def on_timeout(self):
-            if self.message:
-                await self.message.delete()
-                logger.info('CogView timed out and deleted message')
-
-        @discord.ui.button(label='Enable', style=discord.ButtonStyle.green, custom_id='enable', row=1)
-        async def enable_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-            logger.info(f'Enable button clicked for cog: {self.selected_cog}')
-            await cog_callback(interaction, self.selected_cog)
-
-        @discord.ui.button(label='Disable', style=discord.ButtonStyle.red, custom_id='disable', row=1)
-        async def disable_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-            logger.info(f'Disable button clicked for cog: {self.selected_cog}')
-            await cog_callback(interaction, self.selected_cog)
-
-        @discord.ui.button(label='Reload', style=discord.ButtonStyle.blurple, custom_id='reload', row=1)
-        async def reload_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-            logger.info(f'Reload button clicked for cog: {self.selected_cog}')
-            await cog_callback(interaction, self.selected_cog)
-
-        @discord.ui.button(label='Remove', style=discord.ButtonStyle.gray, custom_id='remove', row=1)
-        async def remove_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-            logger.info(f'Remove button clicked for cog: {self.selected_cog}')
-            await cog_callback(interaction, self.selected_cog)
-
-        @discord.ui.button(label='Install', style=discord.ButtonStyle.gray, custom_id='install', row=1)
-        async def install_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
-            logger.info('Install button clicked')
-            await interaction.response.send_message('Please upload a .py file to install as a cog.', ephemeral=True)
-
-            def check(msg):
-                return msg.author == interaction.user and msg.attachments
-
-            try:
-                msg = await bot.wait_for('message', check=check, timeout=60)
-                attachment = msg.attachments[0]
-                if not attachment.filename.endswith('.py'):
-                    await interaction.followup.send('Invalid file type. Please upload a .py file.', ephemeral=True)
-                    logger.info('Invalid file type for installation')
-                    return
-
-                await attachment.save(f'./cogs/{attachment.filename}')
-                try:
-                    await bot.load_extension(f'cogs.{attachment.filename[:-3]}')
-                    logger.info(f'Installed cog: {attachment.filename}')
-                    await interaction.followup.send(f'Installed {attachment.filename} as a cog.', ephemeral=True)
-                    self.cogs.append(attachment.filename[:-3])
-                    await interaction.edit_original_response(
-                        content=f"Selected {attachment.filename[:-3]}: Enabled",
-                        view=CogView(self.cogs, self.disabled_cogs, attachment.filename[:-3])
-                    )
-                    await bot.tree.sync()
-                except Exception as e:
-                    await interaction.followup.send(f'Error installing {attachment.filename}: {e}', ephemeral=True)
-                    logger.error(f'Error installing cog: {attachment.filename}', exc_info=True)
-            except asyncio.TimeoutError:
-                await interaction.followup.send('Timed out waiting for file upload.', ephemeral=True)
-                logger.info('Timed out waiting for file upload')
-
-    class CogDropdown(discord.ui.Select):
-        def __init__(self, cogs, disabled_cogs, selected_cog=None):
-            options = [
-                discord.SelectOption(
-                    label=cog,
-                    default=cog == selected_cog
-                )
-                for cog in cogs
-            ]
-            super().__init__(placeholder='Select a cog', min_values=1, max_values=1, options=options)
-
-        async def callback(self, interaction: discord.Interaction):
-            await interaction.response.defer()
-
-            selected_cog = self.values[0]
-            self.view.selected_cog = selected_cog
-            logger.info(f'Selected cog: {selected_cog}')
-            await interaction.edit_original_response(
-                content=f"Selected {selected_cog}: {'Enabled' if selected_cog not in self.view.disabled_cogs else 'Disabled'}",
-                view=self.view
+    # Get the guild ID from config
+    guild_id = bot.config_manager.get('discord.server_id')
+    if not guild_id:
+        logger.error('No server ID configured')
+        return
+        
+    guild = bot.get_guild(int(guild_id))
+    if not guild:
+        logger.error(f'Could not find guild with ID: {guild_id}')
+        return
+    
+    try:
+        # Initial permissions check
+        permissions_ok, issues = await check_bot_permissions(guild)
+        if not permissions_ok:
+            logger.error(f"Permission issues detected: {issues}")
+            # Continue anyway to try setting up what we can
+        
+        # Set up roles first
+        role_ids = await setup_roles(guild)
+        if role_ids:
+            # Update config with role IDs
+            for key, role_id in role_ids.items():
+                bot.config_manager.set(f'discord.{key}', role_id)
+            bot.config_manager.save()
+        
+        # Then set up channels
+        channel_ids = await setup_channels(guild)
+        if channel_ids:
+            # Update config with channel IDs
+            for key, channel_id in channel_ids.items():
+                bot.config_manager.set(f'discord.{key}', channel_id)
+            bot.config_manager.save()
+        
+        # Get admin channel for status messages
+        admin_channel = None
+        admin_channel_id = channel_ids.get('factorio_admin_id')
+        if admin_channel_id and admin_channel_id.isdigit():
+            admin_channel = guild.get_channel(int(admin_channel_id))
+        
+        if admin_channel:
+            # Send setup status
+            setup_status = []
+            setup_status.append("✅ Channels configured successfully" if channel_ids else "❌ Channel setup failed")
+            setup_status.append("✅ Roles configured successfully" if role_ids else "❌ Role setup failed")
+            
+            if not permissions_ok:
+                setup_status.append("⚠️ Permission issues detected")
+            
+            await send_status_message(
+                admin_channel,
+                "Bot Setup Status",
+                "\n".join(setup_status),
+                discord.Color.green() if all(setup_status) else discord.Color.orange()
             )
+        
+        # Sync the commands globally
+        try:
+            await bot.tree.sync()
+            logger.info('Synced commands globally')
+        except Exception as e:
+            logger.error(f'Failed to sync commands: {e}')
+        
+    except Exception as e:
+        logger.error(f'Error during setup: {e}')
+        traceback.print_exc()
 
-    view = CogView(cogs, disabled_cogs)
-    response = await interaction.response.send_message(
-        content="Please select a cog from the dropdown menu.",
-        view=view,
-        ephemeral=True
-    )
-    logger.info('Sent CogView message')
-    view.message = response
+@bot.event
+async def on_guild_role_delete(role):
+    """Handles recreation of essential roles if they are deleted"""
+    guild = role.guild
+    role_id = str(role.id)
+    
+    # Check if the deleted role was one of our managed roles
+    managed_roles = {
+        'discord.factorio_admin_id': 'factorio_admin',
+        'discord.factorio_mod_id': 'factorio_mod',
+        'discord.factorio_user_id': 'factorio_user'
+    }
+    
+    for config_key, role_key in managed_roles.items():
+        if bot.config_manager.get(config_key) == role_id:
+            logger.warning(f'Managed role {role.name} was deleted. Triggering recreation...')
+            try:
+                # Trigger role setup to recreate all roles and restore assignments
+                role_ids = await setup_roles(guild)
+                
+                # Update config with new role IDs
+                for key, new_id in role_ids.items():
+                    bot.config_manager.set(f'discord.{key}', new_id)
+                bot.config_manager.save()
+                
+                logger.info('Role recreation complete')
+            except Exception as e:
+                logger.error(f'Failed to recreate role: {e}')
+                traceback.print_exc()
+            break
+
+@bot.event
+async def on_guild_channel_delete(channel):
+    """Handles recreation of essential channels if they are deleted"""
+    guild = channel.guild
+    
+    # Check if the deleted channel was one of our managed channels
+    channel_id = str(channel.id)
+    managed_channels = {
+        'discord.factorio_general_id': 'factorio_general',
+        'discord.factorio_admin_id': 'factorio_admin'
+    }
+    
+    for config_key, channel_key in managed_channels.items():
+        if bot.config_manager.get(config_key) == channel_id:
+            logger.warning(f'Managed channel {channel.name} was deleted. Triggering recreation...')
+            try:
+                # Trigger channel setup to recreate the deleted channel
+                channel_ids = await setup_channels(guild)
+                
+                # Update config with new channel IDs
+                for key, new_id in channel_ids.items():
+                    bot.config_manager.set(f'discord.{key}', new_id)
+                bot.config_manager.save()
+                
+                logger.info('Channel recreation complete')
+            except Exception as e:
+                logger.error(f'Failed to recreate channel: {e}')
+                traceback.print_exc()
+            break
+
+
 
 asyncio.run(load_cogs())
 bot.run(config_manager.get('discord.bot_token'))

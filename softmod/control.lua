@@ -1,7 +1,7 @@
 require "logging" -- logging required for log reading in D-Wire
 require "online" -- player logging
 require "registration" -- provides required command to allow registration ingame
-
+require "cmds" -- commands used by dwire that we cant otherwise live without
 local fw_stats = require("fw_stats")
 
 -- Register events directly without conditions

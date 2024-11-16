@@ -34,6 +34,12 @@ class RegistrationCog(commands.Cog):
         self.remove_expired_registrations.cancel()
         logger.info("RegistrationCog unloaded")
 
+    def create_registrations_file(self):
+        if not os.path.isfile(self.registrations_file):
+            with open(self.registrations_file, "w") as file:
+                json.dump({}, file)
+            logger.info(f"Created new registrations file: {self.registrations_file}")
+
     @commands.Cog.listener()
     async def on_ready(self):
         await self.ensure_readlog_cog()
@@ -57,18 +63,24 @@ class RegistrationCog(commands.Cog):
         logger.error("Max attempts reached. Registration functionality may be limited.")
         return False
 
-    def create_registrations_file(self):
-        if not os.path.isfile(self.registrations_file):
-            with open(self.registrations_file, "w") as file:
-                json.dump({}, file)
-            logger.info(f"Created new registrations file: {self.registrations_file}")
-
     @app_commands.command(name='register', description='Register for the Factorio server')
     async def register(self, interaction: discord.Interaction):
+        # Check if user is already registered
+        with open(self.registrations_file, 'r') as f:
+            registrations = json.load(f)
+            if str(interaction.user.id) in registrations:
+                await interaction.response.send_message(
+                    "You are already registered on the Factorio server.",
+                    ephemeral=True
+                )
+                return
+
+        # Generate and store registration code
         code = self.generate_code()
         self.pending_registrations[code] = interaction.user.id
         self.registration_timestamps[code] = datetime.datetime.now()
 
+        # Create response embed
         embed = discord.Embed(
             title="Registration Instructions",
             description="To complete your registration, please follow these steps:",
@@ -102,11 +114,13 @@ class RegistrationCog(commands.Cog):
         logger.info(f"Registration code {code} sent to user {interaction.user.id}")
 
     def generate_code(self, length=6):
+        """Generate a random numeric code for registration"""
         code = ''.join(random.choice(string.digits) for _ in range(length))
         logger.debug(f"Generated registration code: {code}")
         return code
 
     async def process_registration(self, line):
+        """Process registration commands from the game server"""
         match = re.search(ACCESS_PATTERN, line)
         if match:
             name, code = match.groups()
@@ -118,26 +132,41 @@ class RegistrationCog(commands.Cog):
                 if guild:
                     member = guild.get_member(user_id)
                     if member:
-                        # Default to 'normal' rank for now since we don't get rank info
-                        role_id = self.get_role_id('normal')
-                        if role_id:
-                            role = guild.get_role(int(role_id))
-                            if role:
-                                await member.add_roles(role)
-                                await member.send(f"Thank you for registering, {name}! You have been assigned the role: {role.name}")
-                                logger.info(f"Assigned role '{role.name}' to member {member.id}")
+                        try:
+                            # Get the Factorio-User role
+                            user_role_id = self.config_manager.get('discord.factorio_user_id')
+                            if not user_role_id:
+                                logger.error("Factorio-User role ID not found in config")
+                                await member.send("Registration error: Role configuration is missing. Please contact an administrator.")
+                                return
 
-                                self.store_registration(user_id, name)
-                            else:
-                                await member.send(f"Role with ID '{role_id}' not found.")
-                                logger.warning(f"Role with ID '{role_id}' not found in the server")
-                        else:
-                            await member.send(f"Unable to determine role.")
-                            logger.warning(f"Unable to determine role for registration")
+                            role = guild.get_role(int(user_role_id))
+                            if not role:
+                                logger.error(f"Could not find Factorio-User role with ID: {user_role_id}")
+                                await member.send("Registration error: Required role not found. Please contact an administrator.")
+                                return
 
+                            # Add role
+                            await member.add_roles(role)
+                            await self.bot.track_role_assignment(member, role)
+                            
+                            # Store registration
+                            self.store_registration(user_id, name)
+                            
+                            # Send success message
+                            await member.send(f"Thank you for registering, {name}! You have been assigned the Factorio-User role.")
+                            logger.info(f"Successfully registered user {user_id} as {name}")
+
+                        except discord.Forbidden:
+                            logger.error(f"Bot lacks permission to assign roles to {member.id}")
+                            await member.send("Registration error: I don't have permission to assign roles. Please contact an administrator.")
+                        except Exception as e:
+                            logger.error(f"Error during registration for {member.id}: {str(e)}")
+                            await member.send("An error occurred during registration. Please contact an administrator.")
+
+                        # Clean up registration data
                         del self.pending_registrations[code]
                         del self.registration_timestamps[code]
-                        logger.info(f"Removed pending registration for member {member.id}")
                     else:
                         logger.warning(f"Member {user_id} not found in the guild")
                 else:
@@ -145,36 +174,34 @@ class RegistrationCog(commands.Cog):
             else:
                 logger.warning(f"Invalid registration code: {code}")
 
-    def get_role_id(self, rank):
-        role_mapping = {
-            'moderator': self.config_manager.get('discord.moderator_role_id'),
-            'regular': self.config_manager.get('discord.regular_role_id'),
-            'trusted': self.config_manager.get('discord.trusted_role_id'),
-            'normal': self.config_manager.get('discord.normal_role_id')
-        }
-        return role_mapping.get(rank.lower())
-
     def store_registration(self, user_id, player_name):
-        with open(self.registrations_file, "r") as file:
-            registrations = json.load(file)
+        """Store the registration in the registrations file"""
+        try:
+            with open(self.registrations_file, "r") as file:
+                registrations = json.load(file)
 
-        registrations[str(user_id)] = player_name
+            registrations[str(user_id)] = player_name
 
-        with open(self.registrations_file, "w") as file:
-            json.dump(registrations, file, indent=4)
+            with open(self.registrations_file, "w") as file:
+                json.dump(registrations, file, indent=4)
 
-        logger.info(f"Stored registration for user {user_id} with player name '{player_name}'")
+            logger.info(f"Stored registration for user {user_id} with player name '{player_name}'")
+        except Exception as e:
+            logger.error(f"Error storing registration: {str(e)}")
 
     @tasks.loop(minutes=5)
     async def remove_expired_registrations(self):
+        """Remove registration codes that have expired"""
         one_hour_ago = datetime.datetime.now() - datetime.timedelta(hours=1)
-        expired_codes = [code for code, timestamp in self.registration_timestamps.items() if timestamp < one_hour_ago]
+        expired_codes = [code for code, timestamp in self.registration_timestamps.items() 
+                        if timestamp < one_hour_ago]
 
         for code in expired_codes:
             del self.pending_registrations[code]
             del self.registration_timestamps[code]
 
-        logger.info(f"Removed {len(expired_codes)} expired registration(s)")
+        if expired_codes:
+            logger.info(f"Removed {len(expired_codes)} expired registration(s)")
 
 async def setup(bot):
     await bot.add_cog(RegistrationCog(bot))

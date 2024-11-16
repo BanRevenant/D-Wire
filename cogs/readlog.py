@@ -80,23 +80,24 @@ class ReadLogCog(commands.Cog):
         self.parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.position_file = os.path.join(self.parent_dir, "last_position.txt")
         self.location_prefs_file = os.path.join(self.parent_dir, "location_prefs.json")
+        self.geo_reader = load_geo_database(self.config_manager)
         
-        # Ensure location_prefs.json exists
-        if not os.path.exists(self.location_prefs_file):
-            try:
-                with open(self.location_prefs_file, 'w') as f:
-                    json.dump({}, f)
-                logger.info(f"Created new location preferences file: {self.location_prefs_file}")
-            except Exception as e:
-                logger.error(f"Error creating location preferences file: {str(e)}")
-        
+        # Initialize last_position
         try:
             with open(self.position_file, 'r') as f:
                 self.last_position = int(f.read().strip())
         except:
             self.last_position = 0
-            
-        self.geo_reader = load_geo_database(self.config_manager)
+            logger.info("Starting from beginning of log file")
+        
+        # Use new channel ID configuration
+        self.channel_id = self.config_manager.get('discord.factorio_general_id')
+        if not self.channel_id:
+            # Fallback to old config key if exists
+            self.channel_id = self.config_manager.get('discord.channel_id')
+            logger.warning("Using legacy channel_id configuration")
+        
+        # Initialize other attributes
         self.ip_to_username = {}
         self.ip_timestamps = {}
         self.connected_players = set()
@@ -113,6 +114,15 @@ class ReadLogCog(commands.Cog):
             "ACT": set()
         }
         
+        # Ensure location_prefs.json exists
+        if not os.path.exists(self.location_prefs_file):
+            try:
+                with open(self.location_prefs_file, 'w') as f:
+                    json.dump({}, f)
+                logger.info(f"Created new location preferences file: {self.location_prefs_file}")
+            except Exception as e:
+                logger.error(f"Error creating location preferences file: {str(e)}")
+
         if self.config_manager.get('debug_mode', False):
             DEBUG_CONFIG.update({
                 'debug_stats': True,
@@ -253,25 +263,40 @@ class ReadLogCog(commands.Cog):
                     logger.error(f"Error saving last position: {str(e)}")
 
                 if new_lines:
-                    channel_id = self.config_manager.get('discord.channel_id')
-                    channel = self.bot.get_channel(int(channel_id))
-                    if channel:
-                        for line in new_lines:
-                            try:
-                                await self.process_log_line(line, channel)
-                            except Exception as e:
-                                logger.error(f"Error processing log line: {line}, Error: {str(e)}")
-                                logger.error(traceback.format_exc())
+                    # Use factorio_general_id for channel
+                    channel_id = self.config_manager.get('discord.factorio_general_id')
+                    if not channel_id:
+                        # Fallback to old config key if exists
+                        channel_id = self.config_manager.get('discord.channel_id')
+                        if not channel_id:
+                            logger.error("No channel ID configured")
+                            return
 
-                        # Clean up old IP addresses
-                        current_time = time.time()
-                        for ip_address, timestamp in list(self.ip_timestamps.items()):
-                            if current_time - timestamp > TIMEOUT_SECONDS:
-                                if ip_address in self.ip_to_username:
-                                    debug_log('connections', f"Removing timed out IP Address: {ip_address}")
-                                    del self.ip_to_username[ip_address]
-                                if ip_address in self.ip_timestamps:
-                                    del self.ip_timestamps[ip_address]
+                    try:
+                        channel = self.bot.get_channel(int(channel_id))
+                        if channel:
+                            for line in new_lines:
+                                try:
+                                    await self.process_log_line(line, channel)
+                                except Exception as e:
+                                    logger.error(f"Error processing log line: {line}, Error: {str(e)}")
+                                    logger.error(traceback.format_exc())
+                        else:
+                            logger.error(f"Could not find channel with ID: {channel_id}")
+                    except ValueError as e:
+                        logger.error(f"Invalid channel ID format: {channel_id}")
+                    except Exception as e:
+                        logger.error(f"Error processing channel: {str(e)}")
+
+                    # Clean up old IP addresses
+                    current_time = time.time()
+                    for ip_address, timestamp in list(self.ip_timestamps.items()):
+                        if current_time - timestamp > TIMEOUT_SECONDS:
+                            if ip_address in self.ip_to_username:
+                                debug_log('connections', f"Removing timed out IP Address: {ip_address}")
+                                del self.ip_to_username[ip_address]
+                            if ip_address in self.ip_timestamps:
+                                del self.ip_timestamps[ip_address]
 
         except FileNotFoundError:
             logger.error(f"Log file not found: {self.log_file}")
@@ -307,8 +332,11 @@ class ReadLogCog(commands.Cog):
             ip_match = re.search(IP_PATTERN, line)
             if ip_match:
                 ip_address = ip_match.group(1)
-                country, state = get_location_from_ip(ip_address, self.geo_reader)
-                debug_log('connections', f"Cached IP Address: {ip_address}, Location: {country}, {state}")
+                country = "Unknown"
+                state = "Unknown"
+                if hasattr(self, 'geo_reader') and self.geo_reader:
+                    country, state = get_location_from_ip(ip_address, self.geo_reader)
+                logger.debug(f"Cached IP Address: {ip_address}, Location: {country}, {state}")
                 self.ip_to_username[ip_address] = (None, country, state)
                 self.ip_timestamps[ip_address] = time.time()
 
@@ -329,17 +357,20 @@ class ReadLogCog(commands.Cog):
                         self.connected_players.add(username)
                         ip_address = next((ip for ip, (user, _, _) in self.ip_to_username.items() if user is None), None)
 
-                        # Check user's location display preference
-                        show_location = True
-                        for user_id, prefs in self.location_preferences.items():
-                            if prefs.get('factorio_username') == username:
-                                show_location = prefs.get('show_location', True)
-                                break
+                        # Check global location setting first
+                        show_locations = self.config_manager.get('discord.show_locations', True)  # Default to True if not set
+                        
+                        if show_locations:
+                            # Then check individual user preference
+                            for user_id, prefs in self.location_preferences.items():
+                                if prefs.get('factorio_username') == username:
+                                    show_locations = prefs.get('show_location', True)
+                                    break
 
                         if ip_address:
                             self.ip_to_username[ip_address] = (username, self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2])
                             
-                            if show_location:
+                            if show_locations:
                                 country, state = self.ip_to_username[ip_address][1], self.ip_to_username[ip_address][2]
                                 message = f"**{username}** has joined the game from **{state}, {country}**."
                             else:
@@ -417,6 +448,43 @@ class ReadLogCog(commands.Cog):
             logger.info("ReadLogCog is ready and log checking has started")
         else:
             logger.info("ReadLogCog log checking was already running")
+    @app_commands.command(name="admindisablelocation", description="Enable or disable location announcements globally")
+    @app_commands.describe(
+        setting="Choose whether to show or hide all user locations"
+    )
+    @app_commands.choices(setting=[
+        app_commands.Choice(name="Enable", value="enable"),
+        app_commands.Choice(name="Disable", value="disable")
+    ])
+    @app_commands.default_permissions(administrator=True)
+    async def admindisablelocation(self, interaction: discord.Interaction, setting: app_commands.Choice[str]):
+        """Admin command to control location announcements globally"""
+        # Check if user has Factorio-Admin role
+        if not any(role.name == 'Factorio-Admin' for role in interaction.user.roles):
+            await interaction.response.send_message(
+                "You need the Factorio-Admin role to use this command.",
+                ephemeral=True
+            )
+            return
+
+        try:
+            # Update the config
+            self.config_manager.set('discord.show_locations', setting.value == "enable")
+            self.config_manager.save()
+            
+            status = "enabled" if setting.value == "enable" else "disabled"
+            await interaction.response.send_message(
+                f"Location announcements have been {status} globally.",
+                ephemeral=True
+            )
+            logger.info(f"Global location announcements {status} by {interaction.user.name}")
+
+        except Exception as e:
+            logger.error(f"Error updating location settings: {str(e)}")
+            await interaction.response.send_message(
+                "An error occurred while updating location settings.",
+                ephemeral=True
+            )
 
 async def setup(bot):
     await bot.add_cog(ReadLogCog(bot))

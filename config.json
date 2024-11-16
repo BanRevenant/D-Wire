@@ -1,15 +1,16 @@
 {
   "discord": {
-    "bot_token": "x",
-    "channel_id": "1183123103488954438",
-    "server_id": "971614304740704257",
-    "owner_id": "892467251146522634",
-    "moderator_role_id": "1227378030075445248",
-    "regular_role_id": "1232546697377480704",
-    "trusted_role_id": "1232546656084430858",
-    "normal_role_id": "1232546600929333269",
-    "error_channel_id": "1183123103488954438",
-    "application_id": "1228559912691568712"
+    "bot_token": "your-bot-token-here",
+    "server_id": "your-server-id",
+    "application_id": "your-application-id",
+    "owner_id": "your-owner-id",
+    
+    "factorio_admin_id": "auto-generated-admin-role-id",
+    "factorio_mod_id": "auto-generated-mod-role-id",
+    "factorio_user_id": "auto-generated-user-role-id",
+    
+    "factorio_general_id": "auto-generated-general-channel-id",
+    "factorio_admin_id": "auto-generated-admin-channel-id"
   },
   "factorio_server": {
     "executable": "/opt/factorio/bin/x64/factorio",
@@ -17,7 +18,7 @@
     "default_port": 13337,
     "default_bind_address": "0.0.0.0",
     "default_rcon_port": 27015,
-    "default_rcon_password": "6Ar.ADsx8J9x",
+    "default_rcon_password": "your-rcon-password",
     "server_settings_file": "/opt/factorio/config/server-settings.json",
     "server_adminlist_file": "/opt/factorio/config/server-adminlist.json",
     "saves_directory": "/opt/factorio/saves",
@@ -28,8 +29,8 @@
     "verbose_log_file": "/opt/factorio/verbose.log"
   },
   "factorio_mod_portal": {
-    "username": "BanRevenant",
-    "token": "x",
+    "username": "your-username",
+    "token": "your-token",
     "mod_path": "/opt/factorio/mods"
   },
   "disabled_cogs": [],

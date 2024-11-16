@@ -19,9 +19,9 @@ class StatsCog(commands.Cog):
         self.config_manager = bot.config_manager
         self.parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.registrations_file = os.path.join(self.parent_dir, "registrations.json")
-        if not hasattr(bot, 'stats_logger_instance'):
-            bot.stats_logger_instance = StatsLogger(self.parent_dir)
-        self.stats_logger = bot.stats_logger_instance
+        self.stats_logger = self.bot.get_cog('StatsLogger')  # Get the cog directly
+        if not self.stats_logger:
+            logger.error("StatsLogger cog not found")
         self.readlog_cog = None
         logger.info("StatsCog initialized")
 
@@ -85,10 +85,18 @@ class StatsCog(commands.Cog):
             if interaction:
                 await interaction.response.send_message(embed=embed)
             else:
-                channel_id = self.config_manager.get('discord.channel_id')
-                channel = self.bot.get_channel(int(channel_id))
-                if channel:
-                    await channel.send(embed=embed)
+                channel_id = self.config_manager.get('discord.factorio_general_id')
+                if not channel_id:
+                    logger.error("No channel ID configured")
+                    return
+                try:
+                    channel = self.bot.get_channel(int(channel_id))
+                    if channel:
+                        await channel.send(embed=embed)
+                    else:
+                        logger.error(f"Could not find channel with ID: {channel_id}")
+                except Exception as e:
+                    logger.error(f"Error sending message: {str(e)}")
             logger.warning(f"Stats requested for unknown player")
             return
 
@@ -225,10 +233,18 @@ class StatsCog(commands.Cog):
             if interaction:
                 await interaction.response.send_message(embed=embed)
             else:
-                channel_id = self.config_manager.get('discord.channel_id')
-                channel = self.bot.get_channel(int(channel_id))
-                if channel:
-                    await channel.send(embed=embed)
+                channel_id = self.config_manager.get('discord.factorio_general_id')
+                if not channel_id:
+                    logger.error("No channel ID configured")
+                    return
+                try:
+                    channel = self.bot.get_channel(int(channel_id))
+                    if channel:
+                        await channel.send(embed=embed)
+                    else:
+                        logger.error(f"Could not find channel with ID: {channel_id}")
+                except Exception as e:
+                    logger.error(f"Error sending message: {str(e)}")
             logger.info(f"Posted stats for player: {player_name}")
 
         except Exception as e:
@@ -243,10 +259,18 @@ class StatsCog(commands.Cog):
             if interaction:
                 await interaction.response.send_message(embed=embed)
             else:
-                channel_id = self.config_manager.get('discord.channel_id')
-                channel = self.bot.get_channel(int(channel_id))
-                if channel:
-                    await channel.send(embed=embed)
+                channel_id = self.config_manager.get('discord.factorio_general_id')
+                if not channel_id:
+                    logger.error("No channel ID configured")
+                    return
+                try:
+                    channel = self.bot.get_channel(int(channel_id))
+                    if channel:
+                        await channel.send(embed=embed)
+                    else:
+                        logger.error(f"Could not find channel with ID: {channel_id}")
+                except Exception as e:
+                    logger.error(f"Error sending message: {str(e)}")
 
     @app_commands.command(name='wipedata', description='Wipe player statistics data')
     @app_commands.default_permissions(administrator=True, moderate_members=True)
