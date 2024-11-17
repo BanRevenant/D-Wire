@@ -25,6 +25,7 @@ class CogWatcher(FileSystemEventHandler):
     def __init__(self, bot):
         self.bot = bot
         self.last_modified = {}
+        self.reloading_cogs = set()  # Track cogs currently being reloaded
         
     def should_reload(self, path):
         # Prevent reloading too frequently (debounce)
@@ -40,13 +41,19 @@ class CogWatcher(FileSystemEventHandler):
             relative_path = os.path.relpath(path)
             if relative_path.startswith('cogs/') and relative_path.endswith('.py'):
                 cog_name = relative_path[:-3].replace('/', '.')  # Remove .py and convert path to module format
-                logger.info(f"Reloading {cog_name}...")
                 
+                # Check if cog is already being reloaded
+                if cog_name in self.reloading_cogs:
+                    return
+                    
+                self.reloading_cogs.add(cog_name)
                 try:
+                    logger.info(f"Reloading {cog_name}...")
                     await self.bot.reload_extension(cog_name)
                     logger.info(f"Successfully reloaded {cog_name}")
-                except Exception as e:
-                    logger.error(f"Failed to reload {cog_name}: {e}")
+                finally:
+                    self.reloading_cogs.remove(cog_name)
+                    
         except Exception as e:
             logger.error(f"Error in reload_cog: {e}")
 

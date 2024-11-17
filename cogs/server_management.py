@@ -93,11 +93,28 @@ class ServerManagementCog(commands.Cog):
 
     @app_commands.command(name='stopserver', description='Stop the Factorio server')
     @app_commands.default_permissions(administrator=True, moderate_members=True)
-    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)
     async def stopserver(self, interaction: discord.Interaction):
-        await interaction.response.defer()  # Deferring to allow time for processing
-        response = await self.stop_server()
-        await interaction.followup.send(response)  # Using followup to send response after deferring
+        try:
+            # Send initial response
+            await interaction.response.send_message("Stopping server...", ephemeral=True)
+            
+            # Stop the server
+            response = await self.stop_server()
+            
+            # Edit the original message with the result
+            await interaction.edit_original_response(content=response)
+            
+        except discord.errors.InteractionResponded:
+            # If interaction was already responded to, use followup
+            await interaction.followup.send(response)
+        except Exception as e:
+            logger.error(f"Error in stop server command: {str(e)}")
+            error_msg = f"An error occurred while stopping the server: {str(e)}"
+            try:
+                await interaction.edit_original_response(content=error_msg)
+            except:
+                await interaction.followup.send(content=error_msg)
 
     @app_commands.command(name='restartserver', description='Restart the Factorio server')
     @app_commands.default_permissions(administrator=True, moderate_members=True)
