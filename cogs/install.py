@@ -232,11 +232,6 @@ class InstallCog(commands.Cog):
             )
             await message.edit(embed=embed)
 
-            # Clear the destination directory if it exists
-            if os.path.exists(extract_path):
-                import shutil
-                shutil.rmtree(extract_path)
-                
             os.makedirs(extract_path, exist_ok=True)
 
             with tarfile.open(tar_path, 'r:xz') as tar:
@@ -244,16 +239,9 @@ class InstallCog(commands.Cog):
                 total_members = len(members)
                 
                 for i, member in enumerate(members, 1):
-                    # Extract directly to the target directory without the extra factorio folder
-                    if not member.name.startswith('factorio/'):
-                        continue
+                    # Extract everything as is - no filtering or modification
+                    tar.extract(member, extract_path)
                     
-                    # Modify the path to remove the 'factorio/' prefix entirely
-                    member.name = member.name[8:]  # Remove 'factorio/' completely
-                    
-                    if member.name:  # Only extract if there's a name left
-                        tar.extract(member, extract_path)
-                        
                     current_time = asyncio.get_event_loop().time()
                     if (i % 50 == 0 or i == total_members) and (current_time - last_update_time >= 1.0):
                         progress = (i / total_members) * 100
@@ -270,6 +258,7 @@ class InstallCog(commands.Cog):
         except Exception as e:
             logger.error(f"Error during extraction: {str(e)}")
             return False
+
 
     async def create_server_settings(self, config_path: str, message_func) -> bool:
         """Create server-settings.json with default settings."""
@@ -361,6 +350,8 @@ class InstallCog(commands.Cog):
             # Get bot's directory and set install location
             bot_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             install_path = os.path.join(bot_dir, "factorio")
+            logger.info(f"Bot directory: {bot_dir}")
+            logger.info(f"Initial install path: {install_path}")
             
             # Update config with new install location
             self.config_manager.set('factorio_server.install_location', install_path)
@@ -424,15 +415,16 @@ class InstallCog(commands.Cog):
                 await interaction.edit_original_response(embed=embed, view=None)
                 return
 
-
-
             # Start installation
             selected_url = FACTORIO_STABLE_URL if version_view.selected_version == "stable" else FACTORIO_LATEST_URL
             version = versions[version_view.selected_version]
             
             # Download
-            bot_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             download_path = os.path.join(bot_dir, f"factorio_{version}.tar.xz")
+            logger.info(f"Download path: {download_path}")
+            logger.info(f"Will extract to: {os.path.dirname(install_path)}")
+            logger.info(f"Expected final location: {install_path}")
+            
             if not await self.download_with_progress(selected_url, download_path, interaction.original_response):
                 embed = discord.Embed(
                     title="Installation Error",
@@ -442,8 +434,10 @@ class InstallCog(commands.Cog):
                 await interaction.edit_original_response(embed=embed, view=None)
                 return
 
-            # Extract
-            if not await self.extract_with_progress(download_path, install_path, interaction.original_response):
+            # Extract one level up since archive contains 'factorio' folder
+            extract_path = os.path.dirname(install_path)
+            logger.info(f"Beginning extraction from {download_path} to {extract_path}")
+            if not await self.extract_with_progress(download_path, extract_path, interaction.original_response):
                 embed = discord.Embed(
                     title="Installation Error",
                     description="Failed to extract Factorio server.",
@@ -452,20 +446,30 @@ class InstallCog(commands.Cog):
                 await interaction.edit_original_response(embed=embed, view=None)
                 return
             
-            # Create server settings in the installed factorio directory
-            config_path = os.path.join(install_path, "config/server-settings.json")
-            logger.info(f"Creating server settings at: {config_path}")
-            if not await self.create_server_settings(config_path, interaction.original_response):
+            # Verify installation directory exists
+            logger.info(f"Verifying installation at {install_path}")
+            if not os.path.exists(install_path):
+                logger.error(f"Installation directory not found at {install_path}")
                 embed = discord.Embed(
                     title="Installation Error",
-                    description="Failed to create server settings.",
+                    description="Failed to verify installation directory.",
                     color=discord.Color.red()
                 )
                 await interaction.edit_original_response(embed=embed, view=None)
                 return
-
+                
+            # List contents of installation directory
+            logger.info("Installation directory contents:")
+            for root, dirs, files in os.walk(install_path):
+                logger.info(f"Directory: {root}")
+                for d in dirs:
+                    logger.info(f"- Dir: {d}")
+                for f in files:
+                    logger.info(f"- File: {f}")
+            
             # Create server settings
-            config_path = os.path.join(install_path, 'factorio/config/server-settings.json')
+            config_path = os.path.join(install_path, 'config/server-settings.json')
+            logger.info(f"Creating server settings at: {config_path}")
             if not await self.create_server_settings(config_path, interaction.original_response):
                 embed = discord.Embed(
                     title="Installation Error",
