@@ -63,6 +63,55 @@ class AutoReconnectBot(commands.Bot):
         self.reconnect_attempts = 0
         self.max_reconnect_attempts = 5
         self.reconnect_delay = 5  # Initial delay in seconds
+        
+        # Auto-update application ID in config
+        if self.application_id:
+            logger.info(f'Setting application ID in config: {self.application_id}')
+            self.config_manager.set('discord.application_id', str(self.application_id))
+            self.config_manager.save()
+
+    async def on_guild_join(self, guild):
+        """Handle bot joining a new guild"""
+        logger.info(f'Bot joined guild: {guild.name} (ID: {guild.id})')
+        
+        # Update server ID and owner ID in config
+        logger.info(f'Setting server ID in config: {guild.id}')
+        self.config_manager.set('discord.server_id', str(guild.id))
+        
+        logger.info(f'Setting owner ID in config: {guild.owner_id}')
+        self.config_manager.set('discord.owner_id', str(guild.owner_id))
+        
+        self.config_manager.save()
+        
+        # Trigger setup for the new guild
+        await self.setup_guild(guild)
+
+    async def setup_guild(self, guild):
+        """Setup roles and channels for a new guild"""
+        try:
+            # Initial permissions check
+            permissions_ok, issues = await check_bot_permissions(guild)
+            if not permissions_ok:
+                logger.warning(f"Permission issues detected: {issues}")
+            
+            # Set up roles and channels
+            role_ids = await setup_roles(guild)
+            channel_ids = await setup_channels(guild)
+            
+            # Update config with new IDs
+            if role_ids:
+                for key, role_id in role_ids.items():
+                    self.config_manager.set(f'discord.{key}', role_id)
+            
+            if channel_ids:
+                for key, channel_id in channel_ids.items():
+                    self.config_manager.set(f'discord.{key}', channel_id)
+            
+            self.config_manager.save()
+            
+        except Exception as e:
+            logger.error(f'Error during guild setup: {e}')
+            traceback.print_exc()
 
     async def close(self):
         self.reconnect_attempts = 0
@@ -537,20 +586,55 @@ async def setup_channels(guild):
     return channel_ids
 
 
-# Event Handlers
 @bot.event
 async def on_ready():
     logger.info(f'Logged in as {bot.user.name}')
     
-    # Get the guild ID from config
+    # Set application ID in config if not already set
+    if bot.application_id:
+        current_app_id = bot.config_manager.get('discord.application_id')
+        if current_app_id != str(bot.application_id):
+            logger.info(f'Setting application ID in config: {bot.application_id}')
+            bot.config_manager.set('discord.application_id', str(bot.application_id))
+            bot.config_manager.save()
+    
+    # Get the guild ID from config or set it if not present
     guild_id = bot.config_manager.get('discord.server_id')
-    if not guild_id:
-        logger.error('No server ID configured')
-        return
-        
-    guild = bot.get_guild(int(guild_id))
-    if not guild:
-        logger.error(f'Could not find guild with ID: {guild_id}')
+    
+    # Check if guild_id is a placeholder or invalid
+    if not guild_id or guild_id == 'your-server-id' or not guild_id.isdigit():
+        if len(bot.guilds) > 0:
+            # If no valid guild ID is set and bot is in a guild, use the first guild
+            guild = bot.guilds[0]
+            logger.info(f'Setting server ID in config: {guild.id}')
+            bot.config_manager.set('discord.server_id', str(guild.id))
+            
+            # Set owner ID
+            logger.info(f'Setting owner ID in config: {guild.owner_id}')
+            bot.config_manager.set('discord.owner_id', str(guild.owner_id))
+            
+            bot.config_manager.save()
+            guild_id = str(guild.id)
+        else:
+            logger.warning('No server ID configured and bot is not in any guilds')
+            return
+    
+    try:
+        guild = bot.get_guild(int(guild_id))
+        if guild:
+            # Update owner ID if it changed
+            current_owner_id = bot.config_manager.get('discord.owner_id')
+            if str(guild.owner_id) != current_owner_id:
+                logger.info(f'Updating owner ID in config: {guild.owner_id}')
+                bot.config_manager.set('discord.owner_id', str(guild.owner_id))
+                bot.config_manager.save()
+            
+            await bot.setup_guild(guild)
+        else:
+            logger.error(f'Could not find guild with ID: {guild_id}')
+            return
+    except ValueError as e:
+        logger.error(f'Invalid guild ID in config: {guild_id}')
         return
     
     try:
