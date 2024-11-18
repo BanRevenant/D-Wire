@@ -5,13 +5,13 @@
     "application_id": "your-application-id",
     "owner_id": "your-owner-id",
     
-    "factorio_admin_id": "auto-generated-admin-role-id",
+    "factorio_admin_role_id": "auto-generated-admin-role-id",
     "factorio_mod_id": "auto-generated-mod-role-id",
     "factorio_user_id": "auto-generated-user-role-id",
     
-    "factorio_general_id": "auto-generated-general-channel-id",
-    "factorio_admin_id": "auto-generated-admin-channel-id",
-    
+    "factorio_general_channel_id": "auto-generated-general-channel-id",
+    "factorio_admin_channel_id": "auto-generated-admin-channel-id",
+    "factorio_admin_id": "auto-generated-by-admin",
     "show_locations": true
   },
   "factorio_server": {

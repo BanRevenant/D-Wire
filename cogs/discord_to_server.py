@@ -12,11 +12,11 @@ class DiscordToServerCog(commands.Cog):
         self.bot = bot
         self.config_manager = bot.config_manager
         self.rcon_client = None
-        self.rcon_host = self.config_manager.get('factorio_server.rcon_host')
+        self.rcon_host = self.config_manager.get('factorio_server.default_bind_address')
         self.rcon_port = self.config_manager.get('factorio_server.default_rcon_port')
         self.rcon_password = self.config_manager.get('factorio_server.default_rcon_password')
         # Updated to use factorio_general_id
-        self.channel_id = self.config_manager.get('discord.factorio_general_id')
+        self.channel_id = self.config_manager.get('discord.factorio_general_channel_id')
         if not self.channel_id:
             # Fallback to old config key if exists
             self.channel_id = self.config_manager.get('discord.channel_id')

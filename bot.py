@@ -24,46 +24,46 @@ logger = setup_logger('bot', os.path.join(log_dir, 'bot.log'))
 class CogWatcher(FileSystemEventHandler):
     def __init__(self, bot):
         self.bot = bot
-        self.last_modified = {}
-        self.reloading_cogs = set()  # Track cogs currently being reloaded
+        self.last_reload = {}
+        self.reload_lock = asyncio.Lock()
         
-    def should_reload(self, path):
-        # Prevent reloading too frequently (debounce)
-        current_time = time.time()
-        if path in self.last_modified:
-            if current_time - self.last_modified[path] < 1:  # 1 second debounce
-                return False
-        self.last_modified[path] = current_time
-        return True
-
     async def reload_cog(self, path):
-        try:
-            relative_path = os.path.relpath(path)
-            if relative_path.startswith('cogs/') and relative_path.endswith('.py'):
-                cog_name = relative_path[:-3].replace('/', '.')  # Remove .py and convert path to module format
-                
-                # Check if cog is already being reloaded
-                if cog_name in self.reloading_cogs:
-                    return
+        async with self.reload_lock:  # Ensure only one reload happens at a time
+            try:
+                relative_path = os.path.relpath(path)
+                if relative_path.startswith('cogs/') and relative_path.endswith('.py'):
+                    cog_name = relative_path[:-3].replace('/', '.')
+                    current_time = time.time()
                     
-                self.reloading_cogs.add(cog_name)
-                try:
-                    logger.info(f"Reloading {cog_name}...")
-                    await self.bot.reload_extension(cog_name)
-                    logger.info(f"Successfully reloaded {cog_name}")
-                finally:
-                    self.reloading_cogs.remove(cog_name)
+                    # Check if we've reloaded this cog recently
+                    if cog_name in self.last_reload:
+                        if current_time - self.last_reload[cog_name] < 2:  # 2 second cooldown
+                            return
+                            
+                    self.last_reload[cog_name] = current_time
                     
-        except Exception as e:
-            logger.error(f"Error in reload_cog: {e}")
+                    try:
+                        await self.bot.unload_extension(cog_name)
+                    except:
+                        pass  # Ignore unload errors
+                        
+                    await asyncio.sleep(0.5)  # Give a small delay
+                    
+                    try:
+                        await self.bot.load_extension(cog_name)
+                        logger.info(f"Reloaded {cog_name}")
+                    except Exception as e:
+                        logger.error(f"Failed to reload {cog_name}: {e}")
+                        
+            except Exception as e:
+                logger.error(f"Error in reload_cog: {e}")
 
     def on_modified(self, event):
         if event.src_path.endswith('.py') and 'cogs' in event.src_path:
-            if self.should_reload(event.src_path):
-                asyncio.run_coroutine_threadsafe(
-                    self.reload_cog(event.src_path), 
-                    self.bot.loop
-                )
+            asyncio.run_coroutine_threadsafe(
+                self.reload_cog(event.src_path), 
+                self.bot.loop
+            ).result()  # Wait for the result
 
 class AutoReconnectBot(commands.Bot):
     async def setup_hook(self):
@@ -332,7 +332,7 @@ async def setup_roles(guild):
     Returns a dictionary of role IDs.
     """
     roles = {
-        'factorio_admin': {
+        'factorio_admin_role': {
             'name': 'Factorio-Admin',
             'color': discord.Color.red(),
             'permissions': discord.Permissions(
@@ -453,7 +453,7 @@ async def setup_channels(guild):
     """
     # Define channel configurations
     channels = {
-        'factorio_general': {
+        'factorio_general_channel': {
             'name': 'factorio-general',
             'topic': 'General Factorio discussion, commands, and game logs',
             'category_name': 'Factorio',
@@ -492,7 +492,7 @@ async def setup_channels(guild):
     user_role = None
     
     try:
-        admin_role_id = bot.config_manager.get('discord.factorio_admin_id')
+        admin_role_id = bot.config_manager.get('discord.factorio_admin_role_id')
         if admin_role_id and admin_role_id.isdigit():
             admin_role = guild.get_role(int(admin_role_id))
             
@@ -669,7 +669,7 @@ async def on_ready():
         
         # Get admin channel for status messages
         admin_channel = None
-        admin_channel_id = channel_ids.get('factorio_admin_id')
+        admin_channel_id = channel_ids.get('factorio_admin_channel_id')
         if admin_channel_id and admin_channel_id.isdigit():
             admin_channel = guild.get_channel(int(admin_channel_id))
         
@@ -708,7 +708,7 @@ async def on_guild_role_delete(role):
     
     # Check if the deleted role was one of our managed roles
     managed_roles = {
-        'discord.factorio_admin_id': 'factorio_admin',
+        'discord.factorio_admin_role_id': 'factorio_admin',
         'discord.factorio_mod_id': 'factorio_mod',
         'discord.factorio_user_id': 'factorio_user'
     }
@@ -739,8 +739,8 @@ async def on_guild_channel_delete(channel):
     # Check if the deleted channel was one of our managed channels
     channel_id = str(channel.id)
     managed_channels = {
-        'discord.factorio_general_id': 'factorio_general',
-        'discord.factorio_admin_id': 'factorio_admin'
+        'discord.factorio_general_channel_id': 'factorio_general',
+        'discord.factorio_admin_channel_id': 'factorio_admin'
     }
     
     for config_key, channel_key in managed_channels.items():
@@ -767,6 +767,7 @@ async def on_guild_channel_delete(channel):
 cog_watcher = CogWatcher(bot)
 observer = Observer()
 observer.schedule(cog_watcher, path='cogs', recursive=False)
+observer.daemon = True  # Make the observer thread a daemon thread
 observer.start()
 
 try:

@@ -101,7 +101,7 @@ class ReadLogCog(commands.Cog):
             logger.info("Starting from beginning of log file")
         
         # Use new channel ID configuration
-        self.channel_id = self.config_manager.get('discord.factorio_general_id')
+        self.channel_id = self.config_manager.get('discord.factorio_general_channel_id')
         if not self.channel_id:
             # Fallback to old config key if exists
             self.channel_id = self.config_manager.get('discord.channel_id')
@@ -273,7 +273,7 @@ class ReadLogCog(commands.Cog):
 
                 if new_lines:
                     # Use factorio_general_id for channel
-                    channel_id = self.config_manager.get('discord.factorio_general_id')
+                    channel_id = self.config_manager.get('discord.factorio_general_channel_id')
                     if not channel_id:
                         # Fallback to old config key if exists
                         channel_id = self.config_manager.get('discord.channel_id')
