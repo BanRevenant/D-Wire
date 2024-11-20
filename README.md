@@ -15,11 +15,15 @@ https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&sc
 * **Save File Management**: Upload, download, and delete save files directly from Discord.
 * **Mod Management**: Download, enable, disable, and remove mods as needed.
 * **Server Logs & Configuration**: Access server logs and adjust configurations without manual file edits.
+![status](https://i.imgur.com/HMH40Pk.png)
 * **Status Monitoring**: The bot's status dynamically reflects server status—DND when running, Idle when offline.
+![status](https://i.imgur.com/Q1wNm0S.png)
 * **Player Statistics Tracking**: Track user stats, including biter kills.
+![stats](https://i.imgur.com/R4XDqjm.png)
 * **Integrated Chat**: Send and receive messages between Discord and the Factorio server.
 * **User Registration System**: Bind Discord accounts to Factorio accounts for better user management.
 * **Server Status Command**: Quickly view key server information.
+![serverstatus](https://i.imgur.com/tSaMhIP.png)
 * **Country Tracking**: Optionally track the country of players joining the server.
 * **Custom Cog Management**: Create, enable, disable, upload, or remove cogs for easy feature management.
 * **Save Game Augmentation**: Automatically augment new save-game files with softmod code to enhance utility.
@@ -30,21 +34,24 @@ https://discord.com/oauth2/authorize?client_id=[APPLICATION-ID]&permissions=8&sc
 * **Map Recharting**: Rechart the game map while the server is live.
 * **System Commands**: Query server status, PIDs, and base versions.
 * **Log Upload**: Upload server log files directly to Discord for easier monitoring.
-* **Automatic Server Updating**: Automatically checks the server for updates once an hour. ![Server Update GIF](https://i.imgur.com/GykuNGG.gif)
+* **Automatic Server Updating**: Automatically checks the server for updates once an hour. 
+![Server Update GIF](https://i.imgur.com/GykuNGG.gif)
+* **Automatic Softmod Augmentation**: Automatically apply softmods to enhance gameplay.
+* **Easy Bot Deployment**: Simplified deployment for streamlined setup.
+* **Add-On Reporting & Updates**: Report and automatically update game add-ons and even mod mismatch detection.
+![detection](https://i.imgur.com/TB9mVHT.png)
 
-
+* **AND A HELL OF A LOT MORE!**
 
 ## Features in Active Development
 * **Save Game Creator**: Create and manage new save games easily.
-* **Automatic Softmod Augmentation**: Automatically apply softmods to enhance gameplay.
 * **Automatic Repo Updates**: Optionally download updates when new versions are available.
-* **Easy Bot Deployment**: Simplified deployment for streamlined setup.
 * **Installation Guide**: Guides for Linux and Windows deployments upon release.
-* **Add-On Reporting & Updates**: Report and automatically update game add-ons.
+
 
 ## Development Status
 All listed features are functional and thoroughly tested on our production server—created by Factorio enthusiasts, for Factorio enthusiasts. If you have questions or wish to see the bot in action, feel free to join our Discord. We typically respond within an hour.
 
 ## Author
 * **BanRevenant** - Discord: revenantplays  
-[Join Our Discord](https://discord.gg/EwESfeyEs8)
+[Join Our Discord](https://discord.gg/EwESfeyEs8) - Daily, weekly news about updates and developmental progress.
