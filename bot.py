@@ -6,6 +6,8 @@ import json
 import asyncio
 import traceback
 import logging
+import sys
+from getpass import getpass
 from typing import Optional
 import time
 from config_manager import ConfigManager
@@ -13,6 +15,58 @@ from logger import setup_logger
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
+def initialize_config():
+    """Initialize config file and validate bot token"""
+    import os
+    import json
+    from getpass import getpass
+    
+    config_path = 'config.json'
+    default_config_path = 'default.config.json'
+    
+    # Check if config.json exists, if not rename default
+    if not os.path.exists(config_path):
+        if os.path.exists(default_config_path):
+            try:
+                os.rename(default_config_path, config_path)
+                print('Renamed default.config.json to config.json')
+            except Exception as e:
+                print(f'Failed to rename config file: {e}')
+                return False
+        else:
+            print('No config file found and no default config to rename')
+            return False
+            
+    # Load and validate config
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+            
+        bot_token = config.get('discord', {}).get('bot_token', '')
+        
+        # Check if token needs to be set
+        if len(bot_token) < 30 or bot_token == 'your-bot-token-here':
+            print("Discord bot token not found or invalid.")
+            while True:
+                token = getpass("Please enter your Discord bot token or edit the config.json file: ")
+                if len(token) >= 30:
+                    config['discord']['bot_token'] = token
+                    with open(config_path, 'w') as f:
+                        json.dump(config, f, indent=2)
+                    print('Bot token updated in config')
+                    break
+                print("Invalid token length. Please enter a valid Discord bot token.")
+                
+        return True
+        
+    except Exception as e:
+        print(f'Error initializing config: {e}')
+        return False
+
+# Initialize config and check for bot token
+if not initialize_config():
+    logger.error("Failed to initialize config. Exiting.")
+    sys.exit(1)
 
 # Initialize ConfigManager
 config_manager = ConfigManager('config.json')
