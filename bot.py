@@ -516,7 +516,7 @@ async def setup_channels(guild):
                 'admin_only': False
             }
         },
-        'factorio_admin': {
+        'factorio_admin_channel': {
             'name': 'factorio-admin',
             'topic': 'Bot updates, errors, and administrative notifications',
             'category_name': 'Factorio',
