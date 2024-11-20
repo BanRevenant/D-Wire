@@ -15,6 +15,10 @@ from logger import setup_logger
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
+# Set up logger
+log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+logger = setup_logger('bot', os.path.join(log_dir, 'bot.log'))
+
 def initialize_config():
     """Initialize config file and validate bot token"""
     import os
@@ -70,10 +74,6 @@ if not initialize_config():
 
 # Initialize ConfigManager
 config_manager = ConfigManager('config.json')
-
-# Set up logger
-log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
-logger = setup_logger('bot', os.path.join(log_dir, 'bot.log'))
 
 class CogWatcher(FileSystemEventHandler):
     def __init__(self, bot):
@@ -738,7 +738,7 @@ async def on_ready():
             
             await send_status_message(
                 admin_channel,
-                "Bot Setup Status",
+                "Bot Startup Status",
                 "\n".join(setup_status),
                 discord.Color.green() if all(setup_status) else discord.Color.orange()
             )

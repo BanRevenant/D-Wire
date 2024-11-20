@@ -35,7 +35,7 @@ class ModsCog(commands.Cog):
             raise ValueError("Factorio install location not set in config")
         
         # Setup mod paths using Factorio's standard structure
-        self.mod_path = os.path.join(install_location, "factorio", "mods")
+        self.mod_path = os.path.join(install_location, "mods")
         self.mod_list_file = os.path.join(self.mod_path, 'mod-list.json')
 
     async def get_mod_details(self, mod_name):
