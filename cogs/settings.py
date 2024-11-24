@@ -1,4 +1,5 @@
 import discord
+import os
 from discord.ext import commands
 from discord import app_commands
 import json
@@ -19,7 +20,8 @@ class SettingsDropdown(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         selected_category = self.values[0]
-        settings_file = interaction.client.config_manager.get('factorio_server.server_settings_file')
+        install_dir = interaction.client.config_manager.get('factorio_server.install_location')
+        settings_file = os.path.join(install_dir, "config", "server-settings.json")
 
         try:
             with open(settings_file, 'r') as f:
@@ -295,11 +297,22 @@ class SettingsCog(commands.Cog):
 
     @app_commands.command(name='settings', description='Modify Factorio server settings.')
     @app_commands.default_permissions(administrator=True, moderate_members=True)
-    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  # Only server administrators can use this
+    @app_commands.checks.has_permissions(administrator=True, moderate_members=True)  
     async def settings(self, interaction: discord.Interaction):
+        install_dir = self.bot.config_manager.get('factorio_server.install_location')
+        if not install_dir:
+            await interaction.response.send_message("Error: Factorio installation directory not configured", ephemeral=True)
+            logger.error("Factorio installation directory not configured in config.json")
+            return
+
+        settings_file = os.path.join(install_dir, "config", "server-settings.json")
+        if not os.path.exists(settings_file):
+            await interaction.response.send_message(f"Error: Server settings file not found at: {settings_file}", ephemeral=True)
+            logger.error(f"Server settings file not found at: {settings_file}")
+            return
+
         view = discord.ui.View()
         view.add_item(SettingsDropdown())
-
         await interaction.response.send_message("Select a settings category:", view=view)
         logger.info(f"User {interaction.user.name} accessed settings menu")
 

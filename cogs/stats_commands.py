@@ -55,8 +55,14 @@ class StatsCog(commands.Cog):
             await self.post_player_stats(player_name, from_chat=True)
 
     async def process_stats_line(self, line):
-        """Process a log line from ReadLogCog"""
-        await self.stats_logger.process_line(line)
+            """Process a log line from ReadLogCog"""
+            if not self.stats_logger:
+                self.stats_logger = self.bot.get_cog('StatsLogger')
+                if not self.stats_logger:
+                    logger.error("StatsLogger not available")
+                    return
+                    
+            await self.stats_logger.process_line(line)
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -67,8 +73,19 @@ class StatsCog(commands.Cog):
     async def stats(self, interaction: discord.Interaction, member: discord.Member = None):
         if member is None:
             member = interaction.user
+            
         logger.debug(f"Stats requested for user {member.name} (ID: {member.id})")
         player_name = await self.get_player_name(member.id)
+        
+        # Debug logging
+        registration_path = os.path.join(self.parent_dir, "registrations.json")
+        try:
+            with open(registration_path, "r") as file:
+                registrations = json.load(file)
+                logger.debug(f"Current registrations: {registrations}")
+        except Exception as e:
+            logger.error(f"Error reading registrations: {e}")
+            
         logger.debug(f"Found player name: {player_name}")
         await self.post_player_stats(player_name, interaction)
         logger.info(f"Stats command used for player: {player_name}")
@@ -294,17 +311,31 @@ class StatsCog(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     async def get_player_name(self, user_id):
-        try:
-            with open(self.registrations_file, "r") as file:
-                registrations = json.load(file)
-            user_id_str = str(user_id)
-            player_name = registrations.get(user_id_str)
-            logger.debug(f"Retrieved player name for user ID {user_id}: {player_name}")
-            return player_name
-        except Exception as e:
-            logger.error(f"Error getting player name: {str(e)}")
-            logger.error(traceback.format_exc())
-            return None
+            """Get Factorio username from registrations file"""
+            try:
+                registration_path = os.path.join(self.parent_dir, "registrations.json")
+                logger.debug(f"Looking up user {user_id} in registrations file: {registration_path}")
+                
+                if not os.path.exists(registration_path):
+                    logger.error(f"Registrations file not found at: {registration_path}")
+                    return None
+
+                with open(registration_path, "r") as file:
+                    registrations = json.load(file)
+                    
+                user_id_str = str(user_id)  # Convert to string since JSON keys are strings
+                player_name = registrations.get(user_id_str)
+                
+                logger.debug(f"Found registration for user {user_id}: {player_name}")
+                return player_name
+
+            except json.JSONDecodeError:
+                logger.error(f"Invalid JSON in registrations file")
+                return None
+            except Exception as e:
+                logger.error(f"Error getting player name: {str(e)}")
+                logger.error(traceback.format_exc())
+                return None
 
     async def get_user_id_from_player_name(self, player_name):
         try:

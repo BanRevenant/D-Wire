@@ -219,12 +219,16 @@ class ReadLogCog(commands.Cog):
             logger.warning(f"Attempted to unsubscribe from unknown message type: {message_type}")
 
     async def notify_subscribers(self, message_type, line):
-        if message_type in self.message_subscribers:
-            for callback in self.message_subscribers[message_type]:
+            """Notify subscribers with improved error handling"""
+            if message_type not in self.message_subscribers:
+                return
+                
+            for callback in list(self.message_subscribers[message_type]):  # Convert set to list for iteration
                 try:
-                    debug_log('debug_stats' if 'STATS' in message_type else 'debug_commands', 
-                             f"Notifying subscriber {callback.__qualname__} for {message_type}")
-                    await callback(line)
+                    if callback:  # Check if callback exists
+                        debug_log('debug_stats' if 'STATS' in message_type else 'debug_commands', 
+                                f"Notifying subscriber {callback.__qualname__} for {message_type}")
+                        await callback(line)
                 except Exception as e:
                     logger.error(f"Error in subscriber callback {callback.__qualname__}: {str(e)}")
                     logger.error(traceback.format_exc())
