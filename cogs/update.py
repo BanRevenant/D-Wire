@@ -5,6 +5,7 @@ import aiohttp
 import os
 import tarfile
 import asyncio
+import re
 from datetime import datetime
 from factorio_rcon import RCONClient
 from logger import setup_logger
@@ -69,10 +70,34 @@ class UpdateCog(commands.Cog):
                 self.rcon_client = None
 
     async def check_version(self):
+        """Check for new version of Factorio"""
         url = "https://www.factorio.com/get-download/stable/headless/linux64"
         async with aiohttp.ClientSession() as session:
             async with session.head(url) as response:
                 return response.headers.get("Last-Modified")
+            
+    async def get_server_version(self):
+        """Get the current server version from the log file"""
+        try:
+            base_path = self.config_manager.get('factorio_server.install_location')
+            log_file = os.path.join(base_path, "logs/verbose.log")
+            
+            if not os.path.exists(log_file):
+                logger.warning("Server log file not found")
+                return "Version Unknown (Log not found)"
+                
+            with open(log_file, 'r') as f:
+                for line in f:
+                    match = re.search(r'Factorio (\d+\.\d+\.\d+) \(build (\d+)', line)
+                    if match:
+                        version, build = match.groups()
+                        return f"{version} (build {build})"
+            logger.warning("Version information not found in log file")
+            return "Version Unknown (Not found in log)"
+        except Exception as e:
+            logger.error(f"Error reading server version: {str(e)}")
+            return f"Version Unknown (Error: {str(e)})"
+
 
     @tasks.loop(hours=1)
     async def check_for_updates(self):
@@ -98,6 +123,9 @@ class UpdateCog(commands.Cog):
         logger.info("Update check task is ready to start")
 
     async def perform_update_sequence(self, interaction: discord.Interaction = None):
+        # Get initial server version
+        initial_version = await self.get_server_version()
+        
         embed = discord.Embed(
             title="Factorio Server Auto-Update Status",
             description="Starting update process...",
@@ -117,12 +145,13 @@ class UpdateCog(commands.Cog):
 
         # Initialize all fields with pending status
         status_fields.extend([
+            {"name": "Detected Server Version", "value": initial_version, "inline": False},
             {"name": "Game Save", "value": "⏳ Checking server status...", "inline": False},
             {"name": "Server Shutdown", "value": "⏳ Waiting...", "inline": False},
             {"name": "Server Update", "value": "⏳ Waiting...", "inline": False},
             {"name": "Server Startup", "value": "⏳ Waiting...", "inline": False}
         ])
-
+        
         # Update embed with all fields
         embed.clear_fields()
         for field in status_fields:
@@ -134,7 +163,7 @@ class UpdateCog(commands.Cog):
         server_running = server_management and server_management.is_server_running()
 
         if server_running:
-            status_fields[0]["value"] = "🔄 Saving game..."
+            status_fields[1]["value"] = "🔄 Saving game..."
             embed.clear_fields()
             for field in status_fields:
                 embed.add_field(**field)
@@ -154,13 +183,13 @@ class UpdateCog(commands.Cog):
                         await asyncio.sleep(1)
 
             if save_response is not None:
-                status_fields[0]["value"] = "✅ Game saved successfully"
+                status_fields[1]["value"] = "✅ Game saved successfully"
                 logger.info("Game saved successfully")
             else:
-                status_fields[0]["value"] = "❌ Failed to save game"
+                status_fields[1]["value"] = "❌ Failed to save game"
                 logger.error("Failed to save game")
         else:
-            status_fields[0]["value"] = "ℹ️ Server not running - skipping save"
+            status_fields[1]["value"] = "ℹ️ Server not running - skipping save"
             logger.info("Server not running - skipping save step")
 
         embed.clear_fields()
@@ -170,7 +199,7 @@ class UpdateCog(commands.Cog):
         await asyncio.sleep(2)
 
         # Step 2: Stop the server (if running)
-        status_fields[1]["value"] = "🔄 Checking server status..."
+        status_fields[2]["value"] = "🔄 Checking server status..."
         embed.clear_fields()
         for field in status_fields:
             embed.add_field(**field)
@@ -180,13 +209,13 @@ class UpdateCog(commands.Cog):
             if server_management:
                 server_pid = server_management.server_pid
                 stop_result = await server_management.stop_server()
-                status_fields[1]["value"] = f"✅ Server stopped (PID: {server_pid})" if "successfully" in stop_result else f"❌ {stop_result}"
+                status_fields[2]["value"] = f"✅ Server stopped (PID: {server_pid})" if "successfully" in stop_result else f"❌ {stop_result}"
                 logger.info(f"Server stop attempt completed with result: {stop_result}")
             else:
-                status_fields[1]["value"] = "❌ Server management not available"
+                status_fields[2]["value"] = "❌ Server management not available"
                 logger.error("Server management cog not available")
         else:
-            status_fields[1]["value"] = "ℹ️ Server already stopped"
+            status_fields[2]["value"] = "ℹ️ Server already stopped"
             logger.info("Server already stopped - skipping stop step")
 
         embed.clear_fields()
@@ -200,7 +229,7 @@ class UpdateCog(commands.Cog):
         logger.info(f"Ensuring install location exists: {install_location}")
 
         try:
-            status_fields[2]["value"] = "🔄 Downloading update..."
+            status_fields[3]["value"] = "🔄 Downloading update..."
             embed.clear_fields()
             for field in status_fields:
                 embed.add_field(**field)
@@ -221,7 +250,21 @@ class UpdateCog(commands.Cog):
                                     break
                                 f.write(chunk)
 
-                        status_fields[2]["value"] = "✅ Download complete\n🔄 Extracting files..."
+                        status_fields[3]["value"] = "🔄 Extracting files..."
+                        embed.clear_fields()
+                        for field in status_fields:
+                            embed.add_field(**field)
+                        await message.edit(embed=embed)
+
+                        # Extract files
+                        logger.info("Extracting update files")
+                        with tarfile.open(file_path, 'r:xz') as tar:
+                            for member in tar.getmembers():
+                                if member.name.startswith('factorio/'):
+                                    member.name = member.name[9:]  # Remove 'factorio/' prefix
+                                    tar.extract(member, install_location)
+
+                        status_fields[3]["value"] = "✅ Update completed successfully"
                         embed.clear_fields()
                         for field in status_fields:
                             embed.add_field(**field)
@@ -244,7 +287,12 @@ class UpdateCog(commands.Cog):
                         os.remove(file_path)
                         logger.info("Cleaned up download file")
 
-                        status_fields[2]["value"] = "✅ Update completed successfully"
+                        status_fields[3]["value"] = "✅ Update completed successfully"  # Changed from [2] to [3]
+                        
+                        # If update was successful, get and display new version
+                        await asyncio.sleep(2)  # Give a moment for the server to update its log
+                        new_version = await self.get_server_version()
+                        status_fields[0]["value"] = f"{initial_version} → {new_version}"
                     else:
                         status_fields[2]["value"] = f"❌ Download failed (Status: {response.status})"
                         logger.error(f"Download failed with status: {response.status}")
@@ -258,9 +306,9 @@ class UpdateCog(commands.Cog):
             embed.add_field(**field)
         await message.edit(embed=embed)
 
-        # Step 4: Start the server
+    # Step 4: Start the server
         if server_running:  # Only try to start if it was running before
-            status_fields[3]["value"] = "🔄 Starting server..."
+            status_fields[4]["value"] = "🔄 Starting server..."
             embed.clear_fields()
             for field in status_fields:
                 embed.add_field(**field)
@@ -268,12 +316,42 @@ class UpdateCog(commands.Cog):
 
             if server_management:
                 start_result = await server_management.start_server()
+                logger.info(f"Start result: {start_result}")
+                
                 if "successfully" in start_result:
                     new_pid = server_management.server_pid
-                    status_fields[3]["value"] = f"✅ Server started successfully (PID: {new_pid})"
-                    logger.info(f"Server started with new PID: {new_pid}")
+                    logger.info(f"Setting status fields - PID: {new_pid}")
+                    
+                    # Log current value
+                    logger.info(f"Current startup field value: {status_fields[4]['value']}")
+                    
+                    status_fields[4]["value"] = f"🔄 Server started, waiting for initialization..."
+                    logger.info(f"Set startup field to: {status_fields[4]['value']}")
+                    
+                    embed.clear_fields()
+                    for field in status_fields:
+                        embed.add_field(**field)
+                    await message.edit(embed=embed)
+
+                    # Wait for server to initialize and create log file
+                    await asyncio.sleep(5)
+                    
+                    # Get new version after server has started
+                    new_version = await self.get_server_version()
+                    logger.info(f"New version detected: {new_version}")
+                    
+                    status_fields[0]["value"] = f"{initial_version} → {new_version}"
+                    status_fields[4]["value"] = f"✅ Server started successfully (PID: {new_pid})"
+                    logger.info(f"Updated startup field to: {status_fields[4]['value']}")
+                    
+                    # Update embed immediately after setting status
+                    logger.info("Updating embed with final server status")
+                    embed.clear_fields()
+                    for field in status_fields:
+                        embed.add_field(**field)
+                    await message.edit(embed=embed)
                 else:
-                    status_fields[3]["value"] = f"❌ {start_result}"
+                    status_fields[4]["value"] = f"❌ {start_result}"
                     logger.error(f"Failed to start server: {start_result}")
             else:
                 status_fields[3]["value"] = "❌ Server management not available"
@@ -282,10 +360,9 @@ class UpdateCog(commands.Cog):
             status_fields[3]["value"] = "ℹ️ Server was not running - skipping start"
             logger.info("Server was not running - skipping start step")
 
+        # Final color update only
+        await asyncio.sleep(1)  # Small delay to ensure previous update is complete
         embed.color = discord.Color.green()
-        embed.clear_fields()
-        for field in status_fields:
-            embed.add_field(**field)
         await message.edit(embed=embed)
         logger.info("Update sequence completed")
         return message
