@@ -25,7 +25,7 @@ class UpdateCog(commands.Cog):
         self.reconnect_delay = 10  # seconds
         
         # RCON configuration
-        self.rcon_host = self.config_manager.get('factorio_server.rcon_host')
+        self.rcon_host = self.config_manager.get('factorio_server.default_bind_address')
         self.rcon_port = self.config_manager.get('factorio_server.default_rcon_port')
         self.rcon_password = self.config_manager.get('factorio_server.default_rcon_password')
         logger.info("UpdateCog initialized")
@@ -134,30 +134,31 @@ class UpdateCog(commands.Cog):
         server_running = server_management and server_management.is_server_running()
 
         if server_running:
-            if not self.rcon_client:
-                logger.info("Attempting to establish RCON connection")
-                await self.reconnect_rcon()
+            status_fields[0]["value"] = "🔄 Saving game..."
+            embed.clear_fields()
+            for field in status_fields:
+                embed.add_field(**field)
+            await message.edit(embed=embed)
 
-            if self.rcon_client:
+            save_response = None
+            for attempt in range(2):
+                if not self.rcon_client:
+                    await self.connect_rcon()
                 try:
-                    status_fields[0]["value"] = "🔄 Saving game..."
-                    embed.clear_fields()
-                    for field in status_fields:
-                        embed.add_field(**field)
-                    await message.edit(embed=embed)
-
-                    response = await self.bot.loop.run_in_executor(None, self.rcon_client.send_command, "/server-save")
-                    logger.info(f"RCON command sent: /server-save")
-                    logger.info(f"RCON response: {response}")
-                    status_fields[0]["value"] = "✅ Game saved successfully"
+                    save_response = await self.bot.loop.run_in_executor(None, self.rcon_client.send_command, "/server-save")
+                    break
                 except Exception as e:
-                    status_fields[0]["value"] = f"❌ Failed to save game: {str(e)}"
-                    logger.error(f"Failed to save game: {str(e)}")
-                finally:
+                    logger.error(f"Error sending RCON command (Attempt {attempt + 1}): {str(e)}")
                     await self.disconnect_rcon()
+                    if attempt == 0:
+                        await asyncio.sleep(1)
+
+            if save_response is not None:
+                status_fields[0]["value"] = "✅ Game saved successfully"
+                logger.info("Game saved successfully")
             else:
-                status_fields[0]["value"] = "❌ Failed to connect to server"
-                logger.error("Failed to establish RCON connection")
+                status_fields[0]["value"] = "❌ Failed to save game"
+                logger.error("Failed to save game")
         else:
             status_fields[0]["value"] = "ℹ️ Server not running - skipping save"
             logger.info("Server not running - skipping save step")
@@ -194,7 +195,7 @@ class UpdateCog(commands.Cog):
         await message.edit(embed=embed)
 
         # Step 3: Update the server
-        install_location = self.config_manager.get('factorio_server.factorio_install_location')
+        install_location = self.config_manager.get('factorio_server.install_location')
         os.makedirs(install_location, exist_ok=True)
         logger.info(f"Ensuring install location exists: {install_location}")
 
@@ -229,10 +230,13 @@ class UpdateCog(commands.Cog):
                         # Extract files
                         logger.info("Extracting update files")
                         with tarfile.open(file_path, 'r:xz') as tar:
-                            tar.extractall(install_location)
+                            for member in tar.getmembers():
+                                if member.name.startswith('factorio/'):
+                                    member.name = member.name[9:]  # Remove 'factorio/' prefix
+                                    tar.extract(member, install_location)
 
                         # Set permissions
-                        factorio_exe = os.path.join(install_location, 'factorio', 'bin', 'x64', 'factorio')
+                        factorio_exe = os.path.join(install_location, 'bin', 'x64', 'factorio')
                         os.chmod(factorio_exe, 0o755)
                         logger.info(f"Set executable permissions on: {factorio_exe}")
 
