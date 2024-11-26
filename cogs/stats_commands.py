@@ -15,15 +15,36 @@ CHAT_PATTERN = r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \[CHAT\] (.+): (.+)"
 
 class StatsCog(commands.Cog):
     def __init__(self, bot):
-        self.bot = bot
-        self.config_manager = bot.config_manager
-        self.parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.registrations_file = os.path.join(self.parent_dir, "registrations.json")
-        self.stats_logger = self.bot.get_cog('StatsLogger')  # Get the cog directly
+            self.bot = bot
+            self.config_manager = bot.config_manager
+            self.parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            self.registrations_file = os.path.join(self.parent_dir, "registrations.json")
+            
+            # Initial attempt to get StatsLogger
+            self.stats_logger = self.bot.get_cog('StatsLogger')
+            
+            # If not found, we'll get it later in ensure_cogs
+            if not self.stats_logger:
+                logger.info("StatsLogger not found initially - will acquire later")
+                asyncio.create_task(self.ensure_cogs())
+                
+            self.readlog_cog = None
+    
+    async def ensure_cogs(self):
+        """Ensure all required cogs are available"""
+        max_attempts = 5
+        attempt = 0
+        while attempt < max_attempts and not self.stats_logger:
+            self.stats_logger = self.bot.get_cog('StatsLogger')
+            if self.stats_logger:
+                logger.info("Successfully acquired StatsLogger")
+                break
+            attempt += 1
+            logger.debug(f"StatsLogger not found (Attempt {attempt}/{max_attempts}). Retrying in 1 second...")
+            await asyncio.sleep(1)
+            
         if not self.stats_logger:
-            logger.error("StatsLogger cog not found")
-        self.readlog_cog = None
-        logger.info("StatsCog initialized")
+            logger.error("Failed to acquire StatsLogger after maximum attempts")
 
     async def ensure_readlog_cog(self):
         max_attempts = 5
