@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import re
+import os
 from logger import setup_logger
 from config_manager import ConfigManager
 
@@ -11,7 +12,9 @@ class StatusCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config_manager = bot.config_manager
-        self.server_log_file = self.config_manager.get('factorio_server.server_log_file')
+        # Get base path and construct log file path
+        base_path = self.config_manager.get('factorio_server.install_location')
+        self.server_log_file = os.path.join(base_path, "factorio-current.log")
         logger.info("StatusCog initialized")
 
     @app_commands.command(name='serverstatus', description='Get the current status of the Factorio server')

@@ -267,13 +267,7 @@ class ReadLogCog(commands.Cog):
             with open(self.log_file, "r") as file:
                 file.seek(self.last_position)
                 new_lines = file.readlines()
-                self.last_position = file.tell()
-
-                try:
-                    with open(self.position_file, 'w') as f:
-                        f.write(str(self.last_position))
-                except Exception as e:
-                    logger.error(f"Error saving last position: {str(e)}")
+                new_position = file.tell()
 
                 if new_lines:
                     # Use factorio_general_id for channel
@@ -294,6 +288,16 @@ class ReadLogCog(commands.Cog):
                                 except Exception as e:
                                     logger.error(f"Error processing log line: {line}, Error: {str(e)}")
                                     logger.error(traceback.format_exc())
+                            
+                            # Update and save position after successful processing
+                            self.last_position = new_position
+                            try:
+                                with open(self.position_file, 'w') as f:
+                                    f.write(str(self.last_position))
+                                    f.flush()
+                                    os.fsync(f.fileno())
+                            except Exception as e:
+                                logger.error(f"Error saving last position: {str(e)}")
                         else:
                             logger.error(f"Could not find channel with ID: {channel_id}")
                     except ValueError as e:

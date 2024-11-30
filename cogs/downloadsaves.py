@@ -23,6 +23,9 @@ class SavesManagementView(discord.ui.View):
         super().__init__()
         self.add_item(SavesDropdown(saves))
         self.config_manager = config_manager
+        # Get base path and construct saves directory path
+        base_path = self.config_manager.get('factorio_server.install_location')
+        self.saves_directory = os.path.join(base_path, "saves")
 
     @discord.ui.button(label='Download', style=discord.ButtonStyle.green)
     async def download(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -33,7 +36,7 @@ class SavesManagementView(discord.ui.View):
             return
 
         selected_save = dropdown.values[0]
-        save_path = os.path.join(self.config_manager.get('factorio_server.saves_directory'), selected_save)
+        save_path = os.path.join(self.saves_directory, selected_save)  # Using self.saves_directory instead
         if os.path.exists(save_path):
             file_size = os.path.getsize(save_path)
             if file_size > 8388608:  # 8 MB in bytes
@@ -55,7 +58,7 @@ class SavesManagementView(discord.ui.View):
             return
 
         selected_save = dropdown.values[0]
-        save_path = os.path.join(self.config_manager.get('factorio_server.saves_directory'), selected_save)
+        save_path = os.path.join(self.saves_directory, selected_save)  # Using self.saves_directory instead
         if os.path.exists(save_path):
             os.remove(save_path)
             await interaction.response.edit_message(content=f"Save file `{selected_save}` has been removed.")
@@ -71,14 +74,16 @@ class DownloadSavesCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.config_manager = bot.config_manager
+        # Get base path and construct saves directory path
+        base_path = self.config_manager.get('factorio_server.install_location')
+        self.saves_directory = os.path.join(base_path, "saves")
         logger.info("DownloadSavesCog initialized")
 
     @app_commands.command(name='downloadsaves', description='Lists all save files on the Factorio server for download')
     async def downloadsaves(self, interaction: discord.Interaction):
         """Lists all save files on the Factorio server for download."""
         await interaction.response.defer()
-        saves_directory = self.config_manager.get('factorio_server.saves_directory')
-        saves = [file for file in os.listdir(saves_directory) if file.endswith('.zip')]
+        saves = [file for file in os.listdir(self.saves_directory) if file.endswith('.zip')]
         if not saves:
             await interaction.followup.send("No save files found on the Factorio server.")
             logger.info("No save files found on the Factorio server")

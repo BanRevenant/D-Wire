@@ -142,7 +142,7 @@ class ModsCog(commands.Cog):
         """Store the correct URL for a mod."""
         try:
             # You might want to store this in a separate file or database
-            store_path = os.path.join(self.mod_path, 'mod_urls.json')
+            store_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'mod_urls.json')
             
             # Load existing URLs
             urls = {}

@@ -22,10 +22,10 @@ class ModTrackerCog(commands.Cog):
             self.mod_urls = {}
             self.api_url = 'https://mods.factorio.com/api'
             return
-            
+                
         # Setup paths using Factorio's standard structure
         self.mod_path = os.path.join(install_location, "factorio", "mods")
-        self.urls_file = os.path.join(self.mod_path, 'mod_urls.json')
+        self.urls_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'mod_urls.json')  # Changed store_path to self.urls_file
         self.mod_urls: Dict[str, str] = {}
         self.api_url = 'https://mods.factorio.com/api'
         self._load_urls()
