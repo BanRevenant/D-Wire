@@ -68,12 +68,21 @@ class StatsCog(commands.Cog):
         return False
 
     async def process_statsme_command(self, line):
+        logger.info(f"Config contents: {self.config_manager.get('discord')}")  
         """Process the !statsme command from chat."""
         chat_match = re.search(CHAT_PATTERN, line)
         if chat_match:
             _, player_name, _ = chat_match.groups()
             logger.info(f"Processing !statsme command for player {player_name}")
-            await self.post_player_stats(player_name, from_chat=True)
+            channel_id = self.config_manager.get('discord.factorio_general_channel_id')
+            if channel_id:
+                channel = self.bot.get_channel(int(channel_id))
+                if channel:
+                    await self.post_player_stats(player_name, interaction=None, from_chat=True)
+                else:
+                    logger.error(f"Could not find channel with ID: {channel_id}")
+            else:
+                logger.error("No factorio_general_channel_id configured")
 
     async def process_stats_line(self, line):
             """Process a log line from ReadLogCog"""
@@ -123,7 +132,7 @@ class StatsCog(commands.Cog):
             if interaction:
                 await interaction.response.send_message(embed=embed)
             else:
-                channel_id = self.config_manager.get('discord.factorio_general_id')
+                channel_id = self.config_manager.get('discord.factorio_general_channel_id')
                 if not channel_id:
                     logger.error("No channel ID configured")
                     return
@@ -271,7 +280,7 @@ class StatsCog(commands.Cog):
             if interaction:
                 await interaction.response.send_message(embed=embed)
             else:
-                channel_id = self.config_manager.get('discord.factorio_general_id')
+                channel_id = self.config_manager.get('discord.factorio_general_channel_id')
                 if not channel_id:
                     logger.error("No channel ID configured")
                     return
@@ -297,7 +306,7 @@ class StatsCog(commands.Cog):
             if interaction:
                 await interaction.response.send_message(embed=embed)
             else:
-                channel_id = self.config_manager.get('discord.factorio_general_id')
+                channel_id = self.config_manager.get('discord.factorio_general_channel_id')
                 if not channel_id:
                     logger.error("No channel ID configured")
                     return
