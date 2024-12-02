@@ -184,55 +184,73 @@ class ServerManagementCog(commands.Cog):
             return f"Failed to start server: {str(e)}"
 
     async def stop_server(self):
+        """Stop the Factorio server safely without affecting client instances"""
         if not self.is_server_running():
             logger.warning("Attempted to stop server when it's not running")
             return "The server is already stopped."
 
         try:
+            # Get the specific server process using our tracked PID
             process = psutil.Process(self.server_pid)
             
-            # First attempt graceful shutdown
-            logger.info("Initiating graceful server shutdown")
-            for child in process.children(recursive=True):
+            # Verify this is actually our server process
+            if process.name().lower().startswith('factorio'):
+                # First attempt graceful shutdown of our specific server process
+                logger.info(f"Initiating graceful shutdown of server process {self.server_pid}")
+                
+                # Get all child processes before terminating
+                children = process.children(recursive=True)
+                
+                # Attempt graceful shutdown first
+                process.terminate()
+                
                 try:
-                    child.terminate()
-                except psutil.NoSuchProcess:
-                    pass
+                    # Wait for main process to terminate
+                    process.wait(timeout=30)
+                except psutil.TimeoutExpired:
+                    logger.warning("Server didn't shutdown gracefully within timeout, forcing termination")
+                    # Force kill the main server process
+                    process.kill()
                     
-            process.terminate()
-            
-            # Wait up to 30 seconds for the process to terminate
-            try:
-                process.wait(timeout=30)
-            except psutil.TimeoutExpired:
-                logger.warning("Server didn't shutdown gracefully, forcing termination")
-                # Force kill if graceful shutdown fails
-                for child in process.children(recursive=True):
+                # Clean up any remaining child processes
+                for child in children:
                     try:
-                        child.kill()
-                    except psutil.NoSuchProcess:
+                        if child.is_running():
+                            child.kill()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
-                process.kill()
-            
-            # Clean up any remaining factorio processes
-            for proc in psutil.process_iter(['name', 'pid']):
-                try:
-                    if 'factorio' in proc.name().lower():
-                        proc.kill()
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    pass
-
+                        
+                self.server_pid = None
+                self.server_command = None
+                
+                # Clean up server info file
+                if os.path.exists(SERVER_INFO_FILE):
+                    os.remove(SERVER_INFO_FILE)
+                
+                logger.info("Server stopped successfully")
+                
+                await asyncio.sleep(5)
+                await self.update_bot_status()
+                return "Server stopped successfully."
+            else:
+                logger.error(f"PID {self.server_pid} is not a Factorio server process")
+                return f"Error: PID {self.server_pid} is not a Factorio server process"
+                
+        except psutil.NoSuchProcess:
+            logger.warning(f"Server process {self.server_pid} no longer exists")
             self.server_pid = None
             self.server_command = None
             if os.path.exists(SERVER_INFO_FILE):
                 os.remove(SERVER_INFO_FILE)
-            logger.info("Server stopped successfully")
-
-            await asyncio.sleep(5)
-            await self.update_bot_status()
-            return "Server stopped successfully."
+            return "Server process no longer exists. Server info cleaned up."
+            
+        except psutil.AccessDenied as e:
+            logger.error(f"Access denied when trying to stop server: {str(e)}")
+            return "Error: Access denied when trying to stop server"
+            
         except Exception as e:
             logger.error(f"Failed to stop server: {str(e)}")
+            logger.error(traceback.format_exc())
             return f"Failed to stop server: {str(e)}"
 
     async def restart_server(self):
