@@ -10,6 +10,8 @@ import sys
 from getpass import getpass
 from typing import Optional
 import time
+import subprocess
+import traceback
 from config_manager import ConfigManager
 from logger import setup_logger
 from watchdog.observers import Observer
@@ -19,12 +21,247 @@ from watchdog.events import FileSystemEventHandler
 log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
 logger = setup_logger('bot', os.path.join(log_dir, 'bot.log'))
 
+def check_service_exists():
+    """Check if the D-Wire service already exists"""
+    service_path = '/etc/systemd/system/dwire.service'
+    return os.path.exists(service_path)
+
+def is_running_as_service():
+    """Check if bot is running as a systemd service"""
+    try:
+        return os.getppid() == 1
+    except:
+        return False
+
+def setup_system_service():
+    """Setup systemd service for the bot"""
+    try:
+        print("\n=== Starting D-Wire Service Setup ===")
+        
+        # Debug - Current directory and user
+        print(f"Current directory: {os.getcwd()}")
+        print(f"Running as user: {os.getenv('USER')}")
+        print(f"Effective UID: {os.geteuid()}")
+
+        # 1. Create required directories
+        required_dirs = [
+            '/var/log/dwire',
+            '/usr/local/bin'
+        ]
+        
+        for dir_path in required_dirs:
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path, exist_ok=True)
+                print(f"Created directory: {dir_path}")
+            current_perms = oct(os.stat(dir_path).st_mode)[-3:]
+            print(f"Permissions for {dir_path}: {current_perms}")
+            os.chmod(dir_path, 0o755)
+            new_perms = oct(os.stat(dir_path).st_mode)[-3:]
+            print(f"Updated permissions for {dir_path}: {new_perms}")
+
+        # 2. Create service file
+        service_template = f"""[Unit]
+Description=D-Wire Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User={os.getenv('USER')}
+WorkingDirectory={os.path.abspath(os.path.dirname(__file__))}
+ExecStart=/usr/bin/python3 {os.path.abspath(__file__)}
+Restart=always
+RestartForceExitStatus=42
+RestartSec=5
+StandardOutput=append:/var/log/dwire/bot.log
+StandardError=append:/var/log/dwire/error.log
+
+[Install]
+WantedBy=multi-user.target
+"""
+        
+        service_path = '/etc/systemd/system/dwire.service'
+        with open(service_path, 'w') as f:
+            f.write(service_template)
+        os.chmod(service_path, 0o644)
+        print(f"Created service file: {service_path}")
+        
+        # 3. Create control commands with detailed debugging
+        commands = {
+            'start_bot': """#!/bin/bash
+        systemctl start dwire.service
+        systemctl status dwire.service""",
+
+            'stop_bot': """#!/bin/bash
+        systemctl stop dwire.service
+        systemctl status dwire.service""",
+
+            'listen_bot': """#!/bin/bash
+        echo "=== D-Wire Bot Console ==="
+        echo "Press Ctrl+C to stop viewing the console (bot will continue running)"
+        echo "Starting console view..."
+        echo ""
+        tail -f /var/log/dwire/bot.log"""
+        }
+
+        print("\n=== Creating Control Commands ===")
+        for cmd_name, cmd_content in commands.items():
+            cmd_path = f'/usr/local/bin/{cmd_name}'
+            try:
+                print(f"\nCreating command: {cmd_name}")
+                print(f"Writing to path: {cmd_path}")
+                print(f"Content length: {len(cmd_content)} bytes")
+                
+                with open(cmd_path, 'w') as f:
+                    f.write(cmd_content)
+                print(f"File written successfully")
+                
+                # Check file exists and contents
+                if os.path.exists(cmd_path):
+                    with open(cmd_path, 'r') as f:
+                        saved_content = f.read()
+                    print(f"File exists with size: {os.path.getsize(cmd_path)} bytes")
+                    print(f"Content verification: {'MATCH' if saved_content == cmd_content else 'MISMATCH'}")
+                else:
+                    print(f"ERROR: File does not exist after creation!")
+                
+                # Set and verify permissions
+                os.chmod(cmd_path, 0o755)
+                current_perms = oct(os.stat(cmd_path).st_mode)[-3:]
+                print(f"File permissions set to: {current_perms}")
+                
+            except Exception as e:
+                print(f"Error creating {cmd_name}: {str(e)}")
+                print(f"Full error:\n{traceback.format_exc()}")
+                raise
+
+        print("\n=== Verifying Commands ===")
+        for cmd_name in commands.keys():
+            cmd_path = f'/usr/local/bin/{cmd_name}'
+            if os.path.exists(cmd_path):
+                perms = oct(os.stat(cmd_path).st_mode)[-3:]
+                print(f"{cmd_name}: EXISTS (permissions: {perms})")
+                # Try to list using subprocess
+                try:
+                    result = subprocess.run(['ls', '-l', cmd_path], capture_output=True, text=True)
+                    print(f"ls output: {result.stdout.strip()}")
+                except Exception as e:
+                    print(f"Error checking {cmd_name}: {str(e)}")
+            else:
+                print(f"{cmd_name}: MISSING")
+
+        # 4. Setup and start service
+        print("\n=== Configuring Systemd Service ===")
+        try:
+            subprocess.run(['systemctl', 'daemon-reload'], check=True)
+            print("Systemd daemon reloaded")
+            
+            subprocess.run(['systemctl', 'enable', 'dwire.service'], check=True)
+            print("Service enabled")
+            
+            # Remove the automatic restart
+            # subprocess.run(['systemctl', 'restart', 'dwire.service'], check=True)
+            # print("Service restarted")
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Error during systemd configuration: {str(e)}")
+            raise
+
+        print("\n=== Setup Complete ===")
+        print("Available commands:")
+        print("  start_bot  - Start the D-Wire bot")
+        print("  stop_bot   - Stop the D-Wire bot")
+        print("  listen_bot - View bot console output")
+        print("\nService is ready but not running. Use 'start_bot' to start the service.")
+        
+        return True
+
+    except Exception as e:
+        print(f"\n=== Setup Failed ===")
+        print(f"Error during setup: {str(e)}")
+        print(f"Full error: {traceback.format_exc()}")
+        return False
+
+def check_token_setup():
+    """Check if Discord token is set and valid"""
+    try:
+        with open('config.json', 'r') as f:
+            config = json.load(f)
+            token = config.get('discord', {}).get('bot_token', '')
+            if len(token) < 30 or token == 'your-bot-token-here':
+                return False
+        return True
+    except Exception:
+        return False
+
+def ensure_service_running():
+    """Make sure bot is running as a service"""
+    print("\n=== Checking D-Wire Service Status ===")
+    
+    # Only proceed if running as root
+    if os.geteuid() != 0:
+        print("Not running as root, skipping service setup")
+        return
+
+    # Initialize config first
+    if not initialize_config():
+        print("\nFailed to initialize configuration.")
+        print("Please ensure your config.json is set up correctly before running as a service.")
+        sys.exit(1)
+
+    if is_running_as_service():
+        print("Already running as a service")
+        return
+
+    # Check if commands exist
+    commands_exist = all(os.path.exists(f"/usr/local/bin/{cmd}") 
+                        for cmd in ['start_bot', 'stop_bot', 'listen_bot'])
+    
+    if not commands_exist:
+        print("Commands missing - forcing setup...")
+        setup_system_service()
+        print("\nSetup complete. Please use 'start_bot' to start the service.")
+        sys.exit(0)  # Exit after setup
+
+    # If service exists but not running
+    if check_service_exists():
+        print("Service exists but not running. Starting service...")
+        try:
+            subprocess.run(['systemctl', 'start', 'dwire.service'], check=True)
+            print("Service started successfully")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to start service: {e}")
+        sys.exit(0)  # Exit after starting service
+    else:
+        print("Service doesn't exist. Setting up D-Wire service...")
+        setup_system_service()
+        print("\nSetup complete. Please use 'start_bot' to start the service.")
+        sys.exit(0)  # Exit after setup
+
+    # Check if commands exist
+    commands_exist = all(os.path.exists(f"/usr/local/bin/{cmd}") 
+                        for cmd in ['start_bot', 'stop_bot', 'listen_bot'])
+    
+    if not commands_exist:
+        print("Commands missing - forcing setup...")
+        setup_system_service()
+        return
+
+    # If service exists but not running
+    if check_service_exists():
+        print("Service exists but not running. Starting service...")
+        try:
+            subprocess.run(['systemctl', 'start', 'dwire.service'], check=True)
+            print("Service started successfully")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to start service: {e}")
+        sys.exit(0)
+    else:
+        print("Service doesn't exist. Setting up D-Wire service...")
+        setup_system_service()
+        sys.exit(0)
+
 def initialize_config():
     """Initialize config file and validate bot token"""
-    import os
-    import json
-    from getpass import getpass
-    
     config_path = 'config.json'
     default_config_path = 'default.config.json'
     
@@ -51,15 +288,19 @@ def initialize_config():
         # Check if token needs to be set
         if len(bot_token) < 30 or bot_token == 'your-bot-token-here':
             print("Discord bot token not found or invalid.")
-            while True:
-                token = getpass("Please enter your Discord bot token or edit the config.json file: ")
-                if len(token) >= 30:
-                    config['discord']['bot_token'] = token
-                    with open(config_path, 'w') as f:
-                        json.dump(config, f, indent=2)
-                    print('Bot token updated in config')
-                    break
+            token = getpass("Please enter your Discord bot token or edit the config.json file: ")
+            
+            if len(token) >= 30:
+                if 'discord' not in config:
+                    config['discord'] = {}
+                config['discord']['bot_token'] = token
+                with open(config_path, 'w') as f:
+                    json.dump(config, f, indent=2)
+                print('Bot token updated in config')
+                return True
+            else:
                 print("Invalid token length. Please enter a valid Discord bot token.")
+                return False
                 
         return True
         
@@ -738,7 +979,7 @@ async def on_ready():
             
             await send_status_message(
                 admin_channel,
-                "Bot Startup Status",
+                "Bot Start Up Status",
                 "\n".join(setup_status),
                 discord.Color.green() if all(setup_status) else discord.Color.orange()
             )
@@ -824,9 +1065,13 @@ observer.schedule(cog_watcher, path='cogs', recursive=False)
 observer.daemon = True  # Make the observer thread a daemon thread
 observer.start()
 
-try:
-    asyncio.run(load_cogs())
-    bot.run(config_manager.get('discord.bot_token'))
-finally:
-    observer.stop()
-    observer.join()
+if __name__ == "__main__":
+    # Check and setup service if needed
+    ensure_service_running()
+    
+    try:
+        asyncio.run(load_cogs())
+        bot.run(config_manager.get('discord.bot_token'))
+    finally:
+        observer.stop()
+        observer.join()
